@@ -1,0 +1,13 @@
+Topic: {{ brief.topic }}
+Document type: {{ brief.doc_type }}
+Length preset: {{ brief.preset }}
+Audience: {{ brief.audience or "not specified" }}
+User constraints:
+{% for c in brief.constraints %}- {{ c }}
+{% endfor %}
+{% if not brief.constraints %}- (none stated)
+{% endif %}
+
+Sharpen this into a single researchable question. Decompose it into 3-7 sub-questions the
+document must answer. State explicit in-scope and out-of-scope items, the audience, the
+assumptions you are making, and the length preset. Be concrete and avoid unbounded scope.

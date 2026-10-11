@@ -1,0 +1,16 @@
+name: mini-book
+kind: mini-book
+target_words:
+  min: 12000
+  max: 25000
+section_budget:
+  max_sections: 12
+  max_subsections_per_section: 4
+  words_per_subsection: 700
+research_budget:
+  max_tool_calls_per_section: 20
+  max_sources_per_section: 12
+  wall_clock_seconds_per_section: 420
+quality:
+  max_revision_rounds: 2
+  synthesize_default: true

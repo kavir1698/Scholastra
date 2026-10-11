@@ -1,0 +1,12 @@
+Section: {{ section_id }}
+
+For each claim below, decide whether the cited verbatim excerpt actually supports it. List the
+ids (the numeric/atomic claim ids) of claims that are NOT supported. Quote nothing else.
+
+Claims and excerpts:
+{% for claim in claims %}
+- id={{ claim.id }}
+  claim: {{ claim.text }}
+  cited: {{ claim.source_ids | join(', ') }}
+  excerpt: {{ claim.excerpt }}
+{% endfor %}

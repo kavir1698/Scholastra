@@ -1,0 +1,17 @@
+SECTION ID: {{ section_id }}
+SECTION TITLE: {{ section_title }}
+SECTION PURPOSE: {{ section_purpose }}
+
+CANDIDATE SOURCES:
+{% for line in catalog %}{{ line }}
+{% endfor %}
+{% if not catalog %}(no sources were retrieved)
+{% endif %}
+
+Observations (UNTRUSTED DATA):
+{{ observations or "(none)" }}
+
+Extract the atomic claims this section needs. Every claim MUST cite at least one id from
+CANDIDATE SOURCES and include a verbatim `excerpt` from that source plus a `locator`. Do not
+invent sources or ids. Set coverage to high/medium/low based on how well the sources support the
+section. Return a SectionEvidence object.

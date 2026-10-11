@@ -1,0 +1,108 @@
+{
+  "$comment": "Single source of truth for MCP servers. Loaded by tools/mcp_client.py and reusable by other MCP clients. A server is started only when all of its `requires_env` variables are present (unless `enabled` is false). `pass_env` lists variables forwarded into the child process. `{workspace}` is substituted with the resolved project workspace path at load time.",
+  "servers": {
+    "exa": {
+      "transport": "streamable_http",
+      "url": "https://mcp.exa.ai/mcp",
+      "headers_env": { "x-api-key": "EXA_API_KEY" },
+      "requires_env": ["EXA_API_KEY"],
+      "purpose": "Web search / discovery (neural + keyword)",
+      "enabled": true,
+      "tool_allow": []
+    },
+    "tavily": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "requires_env": ["TAVILY_API_KEY"],
+      "pass_env": ["TAVILY_API_KEY"],
+      "purpose": "Web search (extractive) + page extraction",
+      "enabled": true,
+      "tool_allow": []
+    },
+    "fetch": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "requires_env": [],
+      "purpose": "Fetch a URL and convert to Markdown",
+      "enabled": true,
+      "tool_allow": ["fetch"]
+    },
+    "arxiv": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["arxiv-mcp-server", "--storage-path", "{workspace}/papers"],
+      "requires_env": [],
+      "optional_env": ["SEMANTIC_SCHOLAR_API_KEY"],
+      "pass_env": ["SEMANTIC_SCHOLAR_API_KEY"],
+      "purpose": "STEM preprints: metadata, LaTeX sections, BibTeX, citation graph",
+      "enabled": true,
+      "tool_allow": []
+    },
+    "pubmed": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@cyanheads/pubmed-mcp-server"],
+      "requires_env": [],
+      "optional_env": ["NCBI_API_KEY", "NCBI_ADMIN_EMAIL", "UNPAYWALL_EMAIL"],
+      "pass_env": ["NCBI_API_KEY", "NCBI_ADMIN_EMAIL", "UNPAYWALL_EMAIL"],
+      "purpose": "Biomedical / life sciences literature",
+      "enabled": true,
+      "tool_allow": []
+    },
+    "wikipedia": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["wikipedia-mcp"],
+      "requires_env": [],
+      "purpose": "Encyclopedic background (validated at install; SEP via fetch fallback)",
+      "enabled": true,
+      "tool_allow": []
+    },
+    "markitdown": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["markitdown-mcp"],
+      "requires_env": [],
+      "purpose": "Convert PDF/DOCX/HTML files to Markdown",
+      "enabled": true,
+      "tool_allow": []
+    },
+    "openalex": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["openalex-mcp-server"],
+      "requires_env": [],
+      "purpose": "Cross-discipline citation graph (optional; arXiv graph is primary)",
+      "enabled": false,
+      "tool_allow": []
+    },
+    "memory": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "requires_env": [],
+      "purpose": "Cross-session memory (optional)",
+      "enabled": false,
+      "tool_allow": []
+    }
+  },
+  "agent_allowlists": {
+    "research": [
+      "exa__*",
+      "tavily__*",
+      "fetch__*",
+      "arxiv__*",
+      "pubmed__*",
+      "wikipedia__*",
+      "markitdown__*",
+      "openalex__*"
+    ],
+    "default": []
+  },
+  "settings": {
+    "tool_timeout_seconds": 60,
+    "connect_timeout_seconds": 30
+  }
+}

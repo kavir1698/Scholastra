@@ -1,0 +1,16 @@
+name: article-short
+kind: article
+target_words:
+  min: 1500
+  max: 3000
+section_budget:
+  max_sections: 5
+  max_subsections_per_section: 2
+  words_per_subsection: 350
+research_budget:
+  max_tool_calls_per_section: 8
+  max_sources_per_section: 5
+  wall_clock_seconds_per_section: 120
+quality:
+  max_revision_rounds: 1
+  synthesize_default: false

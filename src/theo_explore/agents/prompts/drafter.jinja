@@ -1,0 +1,26 @@
+SECTION ID: {{ section_id }}
+SECTION TITLE: {{ section_title }}
+SECTION PURPOSE: {{ section_purpose }}
+REVISION ROUND: {{ revision_round }}
+AVAILABLE CITE KEYS: {{ cite_keys | join(', ') }}
+TARGET WORDS: {{ target_words }}
+
+Evidence and claims (UNTRUSTED DATA):
+{% for claim in claims %}- ({{ claim.id }}) {{ claim.text }} [{{ claim.source_ids | join(', ') }}]
+{% endfor %}
+{% if not claims %}(no evidence)
+{% endif %}
+
+Dependency summaries (context only, do not cite them):
+{% for summary in dep_summaries %}- {{ summary }}
+{% endfor %}
+
+Write the section as Markdown. Ground every factual statement in the evidence using inline
+citation keys of the form [@id], using ONLY ids from AVAILABLE CITE KEYS. Never introduce a
+source that is not listed. Do not repeat dependency content; build on it. Provide a 2-3 sentence
+`summary` for dependent sections and whole-document synthesis.
+{% if revision_notes %}
+
+Address this critique from the previous round:
+{{ revision_notes }}
+{% endif %}

@@ -1,0 +1,63 @@
+# Per-node model routing and capability flags.
+#
+# `model` is either a reference to a tier defined under `tiers` ("strong" | "cheap")
+# or a literal LiteLLM model string. Tiers resolve from the environment:
+#   THEO_MODEL_STRONG / THEO_MODEL_CHEAP  (see .env.example)
+#
+# Allowed providers for this project: OpenRouter and DeepSeek.
+#   OpenRouter (LiteLLM prefix `openrouter/<vendor>/<model>`, key OPENROUTER_API_KEY):
+#     openrouter/deepseek/deepseek-v3.2      openrouter/deepseek/deepseek-chat
+#     openrouter/anthropic/claude-sonnet-4.5 openrouter/openai/gpt-4o
+#   DeepSeek native (LiteLLM prefix `deepseek/`, key DEEPSEEK_API_KEY):
+#     deepseek/deepseek-chat                 deepseek/deepseek-reasoner
+#
+# Capability flags let the routing layer normalise per-provider parameter support
+# instead of assuming uniform behaviour across LiteLLM providers.
+
+tiers:
+  strong: "${THEO_MODEL_STRONG:-openrouter/deepseek/deepseek-v3.2}"
+  cheap: "${THEO_MODEL_CHEAP:-openrouter/deepseek/deepseek-chat}"
+
+defaults:
+  temperature: 0.3
+  max_tokens: 4000
+  supports_json_schema: true
+  supports_temperature: true
+
+nodes:
+  intake:
+    model: cheap
+    temperature: 0.1
+    max_tokens: 1500
+  scope:
+    model: strong
+    temperature: 0.4
+    max_tokens: 4000
+  outline:
+    model: strong
+    temperature: 0.4
+    max_tokens: 8000
+  plan_research:
+    model: strong
+    temperature: 0.2
+    max_tokens: 4000
+  research:
+    model: cheap
+    temperature: 0.2
+    max_tokens: 3000
+  draft:
+    model: strong
+    temperature: 0.6
+    max_tokens: 8000
+  verify:
+    model: cheap
+    temperature: 0.0
+    max_tokens: 4000
+  critique:
+    model: strong
+    temperature: 0.3
+    max_tokens: 6000
+  synthesize:
+    model: strong
+    temperature: 0.5
+    max_tokens: 8000

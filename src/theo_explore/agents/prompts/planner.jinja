@@ -1,0 +1,21 @@
+Refined question: {{ scope.refined_question }}
+Sub-questions:
+{% for q in scope.sub_questions %}- {{ q }}
+{% endfor %}
+Audience: {{ scope.audience }}
+Length preset: {{ preset.name }} ({{ preset.target_words.min }}-{{ preset.target_words.max }} words)
+Max sections: {{ preset.section_budget.max_sections }}
+Max subsections per section: {{ preset.section_budget.max_subsections_per_section }}
+Words per subsection: ~{{ preset.section_budget.words_per_subsection }}
+
+Design a scholarly outline that follows a review/survey arc: Introduction; Historical
+background; Key concepts; Prior work; Current state and debates; Open problems; Synthesis;
+Suggestions / future work; Conclusions; References. Map the arc onto the length budget above.
+
+Requirements:
+- Every section has a stable slug `id`, a `purpose`, `key_questions`, `target_words`,
+  `source_domains` (subset of arxiv, pubmed, exa, tavily, wikipedia, web), and `depends_on`.
+- `depends_on` lists section ids that must be drafted first. Keep it acyclic. Independent
+  sections (empty `depends_on`) will run in parallel; Synthesis/Conclusions depend on the rest.
+- Subsections are optional structural detail inside a section.
+- Include a References section with target_words 0.

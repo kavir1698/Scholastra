@@ -1,0 +1,18 @@
+Adversarially review the drafts of a research document. Cover: factual grounding (claims not
+supported by evidence), balance and steelmanning of opposing views, coverage gaps, structure and
+coherence, redundancy, unsupported novelty claims, and style.
+
+For each problem produce an Issue with: a stable id, severity (info|minor|major|blocking),
+category, the target section id, a concrete description, and supporting evidence. Rank the most
+serious first. Only raise an issue that requires a change; do not invent problems. If the drafts
+are sound, return an empty issues list.
+
+Section drafts and evidence:
+{% for section_id, draft in drafts.items() %}
+### {{ section_id }}: {{ draft.title }}
+{{ draft.markdown }}
+{% endfor %}
+
+Claim/source summary:
+{% for section_id, ev in evidence.items() %}- {{ section_id }}: {{ ev.claims | length }} claims, coverage={{ ev.coverage }}
+{% endfor %}

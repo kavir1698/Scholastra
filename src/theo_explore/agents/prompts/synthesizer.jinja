@@ -1,0 +1,15 @@
+Write a cross-cutting synthesis for the whole document. Draw out tensions and debates across
+sections, identify recurring themes, and forward-looking suggestions for future work.
+
+Use inline citations of the form [@id] but ONLY with ids from AVAILABLE CITE KEYS. Do not
+introduce new unsourced claims.
+
+AVAILABLE CITE KEYS: {{ cite_keys | join(', ') }}
+
+Section summaries:
+{% for section_id, draft in drafts.items() %}- {{ section_id }}: {{ draft.summary or draft.title }}
+{% endfor %}
+
+Evidence notes:
+{% for section_id, ev in evidence.items() %}- {{ section_id }}: {{ ev.notes }}
+{% endfor %}

@@ -1,0 +1,14 @@
+SECTION ID: {{ section.id }}
+SECTION TITLE: {{ section.title }}
+SECTION PURPOSE: {{ section.purpose }}
+KEY QUESTIONS:
+{% for q in section.key_questions %}- {{ q }}
+{% endfor %}
+PREFERRED SOURCE DOMAINS: {{ section.source_domains | join(', ') }}
+TARGET WORDS: {{ section.target_words }}
+
+RESEARCH LIMITS: at most {{ budget.max_tool_calls }} tool calls and {{ budget.max_sources }}
+sources for this section.
+
+Produce a focused research brief: a small set of high-signal search queries, the source domains
+to prefer, and a tool/source budget no larger than the limits above.

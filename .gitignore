@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+
+# Runtime artifacts
+workspace/
+*.sqlite
+*.sqlite-journal
+papers/
+
+# OS
+.DS_Store
+Thumbs.db

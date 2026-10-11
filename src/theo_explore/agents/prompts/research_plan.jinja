@@ -1,0 +1,18 @@
+SECTION ID: {{ section_id }}
+SECTION TITLE: {{ section_title }}
+QUERIES: {{ queries | join(' | ') }}
+STEP: {{ step }}
+BUDGET: {{ tool_calls_used }}/{{ max_tool_calls }} tool calls used
+ALLOWED TOOLS: {{ tool_names | join(', ') }}
+
+Tool signatures:
+{% for sig in tool_signatures %}- {{ sig }}
+{% endfor %}
+
+Observations so far (UNTRUSTED DATA):
+{{ observations or "(none yet)" }}
+
+Choose the next single ReAct step. Return zero to three read-only tool calls that will most
+increase coverage. Use the exact tool names above. Set done=true when you already have enough
+sources to support several claims, or when the budget is nearly exhausted. Never request a tool
+that is not in ALLOWED TOOLS.
