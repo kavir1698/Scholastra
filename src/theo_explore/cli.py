@@ -107,6 +107,12 @@ def _make_reporter(
         strong_model=project.deps.llm.node_config("scope").model,
         cheap_model=project.deps.llm.node_config("research").model,
     )
+    try:
+        outline = workspace.load_outline()
+        if outline is not None:
+            reporter.seed_sections(sum(1 for s in outline.sections if s.target_words > 0))
+    except Exception:  # noqa: BLE001 - seeding is best-effort
+        pass
     return reporter
 
 

@@ -83,6 +83,10 @@ uv run theo-explore status <project-id>
 uv run theo-explore export <project-id> --formats pdf,docx
 ```
 
+Runs print live progress per phase and per section: research and drafting fan out, so each branch
+reports as it completes, evidence-free sections are flagged, and numbered phase headers track
+overall position. Use `--quiet` for scripted output.
+
 Artifacts land in `workspace/<project-id>/` (override the root with `THEO_WORKSPACE_ROOT`):
 
 ```

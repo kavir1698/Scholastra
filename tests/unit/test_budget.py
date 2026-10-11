@@ -72,8 +72,10 @@ def test_empty_allowed_providers_rejected():
 
 
 def test_capability_flags_present():
+    # json_schema is off by default (most providers reject it); json_object is used.
     factory = LLMFactory()
-    assert factory.node_config("draft").supports_json_schema is True
+    assert factory.node_config("draft").supports_json_schema is False
+    assert factory.node_config("draft").supports_temperature is True
 
 
 def test_add_usage_and_budget():

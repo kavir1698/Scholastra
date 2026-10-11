@@ -57,6 +57,18 @@ def test_reporter_revision_line():
     assert "revised" in buf.getvalue()
 
 
+def test_seed_sections_and_no_evidence_warning():
+    reporter, buf = _reporter()
+    reporter.seed_sections(4)
+    reporter.update(
+        "research_section",
+        {"evidence": {"a": {"claims": [], "coverage": "low"}}},
+    )
+    out = buf.getvalue()
+    assert "4 sections" in out
+    assert "no evidence" in out
+
+
 def test_disabled_reporter_is_silent():
     reporter, buf = _reporter(enabled=False)
     reporter.banner(

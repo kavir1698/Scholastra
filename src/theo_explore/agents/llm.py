@@ -12,6 +12,7 @@ Design goals:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
@@ -97,6 +98,14 @@ class LiteLLMBackend:
 
     def __init__(self, *, max_retries: int = 3) -> None:
         self._max_retries = max_retries
+        # Suppress litellm's "Give Feedback" banner: our capability fallback
+        # intentionally probes unsupported response_format shapes.
+        try:
+            import litellm
+
+            litellm.suppress_debug_info = True
+        except Exception:  # noqa: BLE001 - optional
+            pass
 
     async def complete(
         self,
@@ -236,7 +245,13 @@ class LLMFactory:
             p.strip() for p in self.settings.allowed_providers.split(",") if p.strip()
         }
         self.default_provider = self.settings.default_provider
+        # Bound total concurrent provider calls across all fan-out branches.
+        self._semaphore = asyncio.Semaphore(max(1, int(self.settings.max_concurrency)))
         self._node_configs = self._build_node_configs()
+
+    async def _complete(self, **kwargs: Any) -> RawCompletion:
+        async with self._semaphore:
+            return await self.backend.complete(**kwargs)
 
     def resolve_model(self, model: str) -> str:
         """Normalise a model id to a LiteLLM ``provider/model`` string.
@@ -311,7 +326,7 @@ class LLMFactory:
         last_error: Exception | None = None
         raw_text = ""
         for attempt in range(max_repairs + 1):
-            raw = await self.backend.complete(
+            raw = await self._complete(
                 node=node,
                 model=cfg.model,
                 messages=convo,
@@ -354,7 +369,7 @@ class LLMFactory:
         cfg = self.node_config(node)
         prefix: list[Message] = [{"role": "system", "content": system}] if system else []
         convo: list[Message] = [*prefix, *messages]
-        raw = await self.backend.complete(
+        raw = await self._complete(
             node=node,
             model=cfg.model,
             messages=convo,

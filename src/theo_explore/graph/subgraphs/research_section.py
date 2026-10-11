@@ -18,8 +18,14 @@ from typing_extensions import TypedDict
 from theo_explore.agents.prompting import render, system_preamble
 from theo_explore.graph.deps import Deps
 from theo_explore.graph.reducers import add_lists, merge_budget, merge_by_key
-from theo_explore.models.schemas import NodeUsage, ResearchBrief, SectionEvidence, ToolPlan
-from theo_explore.sources.registry import catalog_lines, normalize_tool_result
+from theo_explore.models.schemas import (
+    NodeUsage,
+    ResearchBrief,
+    SectionEvidence,
+    ToolCall,
+    ToolPlan,
+)
+from theo_explore.sources.registry import catalog_lines, normalize_tool_result, normalize_url
 
 
 class ResearchState(TypedDict, total=False):
@@ -42,6 +48,24 @@ def _tool_signature(tool: Any) -> str:
     rendered = ", ".join(args.keys()) if isinstance(args, dict) else ""
     description = (getattr(tool, "description", "") or "").split("\n")[0]
     return f"{tool.name}({rendered}) — {description}"
+
+
+def _fallback_plan(state: ResearchState, tools: list[Any], brief: ResearchBrief) -> ToolPlan:
+    """Deterministic plan used when the LLM planning step fails.
+
+    Issues the section's planned queries directly against the available search
+    tools so a planning failure never silently yields an evidence-free section.
+    """
+    if state.get("tool_calls_used", 0) > 0 or not tools:
+        return ToolPlan(done=True)
+    search = [t for t in tools if "search" in t.name.lower()] or tools
+    queries = (brief.queries or [state.get("section_title", "")])[: brief.max_tool_calls]
+    calls = [
+        ToolCall(tool=search[i % len(search)].name, arguments={"query": query})
+        for i, query in enumerate(queries)
+        if query
+    ]
+    return ToolPlan(tool_calls=calls, done=not calls, reasoning="deterministic fallback")
 
 
 def _summarize_observation(result: Any, *, limit: int = 1200) -> str:
@@ -87,7 +111,7 @@ def build_research_subgraph(deps: Deps):
             )
         except Exception as exc:  # noqa: BLE001 - never fail a run on one plan step
             deps.log("research_plan_failed", section=state["section_id"], error=str(exc))
-            plan, usage = ToolPlan(done=True), NodeUsage()
+            plan, usage = _fallback_plan(state, tools, brief), NodeUsage()
         return {
             "next_plan": plan.model_dump(),
             "steps": state.get("steps", 0) + 1,
@@ -158,7 +182,7 @@ def build_research_subgraph(deps: Deps):
             update={
                 "section_id": state["section_id"],
                 "tool_calls": state.get("tool_calls_used", 0),
-                "claims": _bind_claims(evidence, sources),
+                "claims": _bind_claims(evidence, sources, deps.log),
             }
         )
         deps.workspace(state["project_id"]).save_evidence(evidence)
@@ -201,11 +225,58 @@ def _source_view(data: dict[str, Any]):
     return Source.model_validate(data)
 
 
-def _bind_claims(evidence: SectionEvidence, sources: dict[str, Any]) -> list:
-    """Drop claims whose cited source ids are not in the registry."""
+def _source_lookup(sources: dict[str, Any]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for sid, data in sources.items():
+        data = data or {}
+        lookup[sid] = sid
+        lookup[sid.lower()] = sid
+        url = data.get("url")
+        if url:
+            norm = normalize_url(str(url))
+            for key in (str(url), str(url).rstrip("/"), norm, f"url:{norm}"):
+                lookup.setdefault(key.lower(), sid)
+        title = str(data.get("title") or "").strip().lower()
+        if title:
+            lookup.setdefault(title, sid)
+    return lookup
+
+
+def _resolve_citation(key: str, lookup: dict[str, str]) -> str | None:
+    raw = key.strip().lstrip("@")
+    candidates = [raw, raw.lower()]
+    if "://" in raw:
+        candidates.append(f"url:{normalize_url(raw)}")
+    else:
+        candidates.append(f"url:{normalize_url('https://' + raw)}")
+    for candidate in candidates:
+        if candidate and candidate in lookup:
+            return lookup[candidate]
+    return None
+
+
+def _bind_claims(evidence: SectionEvidence, sources: dict[str, Any], log: Any = None) -> list:
+    """Resolve each cited source id leniently; drop only genuinely unknown cites."""
+    lookup = _source_lookup(sources)
     bound = []
+    dropped: list[str] = []
     for claim in evidence.claims:
-        valid = [sid for sid in claim.source_ids if sid in sources]
+        valid: list[str] = []
+        for raw in claim.source_ids:
+            resolved = _resolve_citation(str(raw), lookup)
+            if resolved and resolved not in valid:
+                valid.append(resolved)
+            elif not resolved:
+                dropped.append(str(raw))
         if valid:
             bound.append(claim.model_copy(update={"source_ids": valid}))
+        else:
+            dropped.append(claim.id)
+    if dropped and log is not None:
+        log(
+            "claims_dropped",
+            section=evidence.section_id,
+            count=len(dropped),
+            sample=dropped[:5],
+        )
     return bound

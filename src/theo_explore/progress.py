@@ -40,6 +40,10 @@ def _short(text: str, limit: int = 90) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _short_model(model: str) -> str:
+    return model[len("openrouter/") :] if model.startswith("openrouter/") else model
+
+
 def _section_ids(payload: dict[str, Any], key: str) -> list[str]:
     value = payload.get(key)
     return list(value.keys()) if isinstance(value, dict) else []
@@ -78,13 +82,17 @@ class ProgressReporter:
 
     def _phase_header(self, phase_key: str, label: str, detail: str = "") -> None:
         if phase_key in self._phases_seen:
-            if detail:
-                self._line(f"      [dim]{detail}[/dim]")
             return
         self._phases_seen.add(phase_key)
         self._phase_index += 1
         suffix = f"  [dim]{detail}[/dim]" if detail else ""
         self._line(f"[bold cyan][{self._phase_index}][/bold cyan] [bold]{label}[/bold]{suffix}")
+
+    def seed_sections(self, count: int) -> None:
+        """Pre-set the section total (e.g. when resuming from a checkpoint)."""
+        if count and not self._research_total:
+            self._research_total = count
+            self._draft_total = count
 
     # -- lifecycle ---------------------------------------------------------
     def banner(
@@ -105,7 +113,7 @@ class ProgressReporter:
         body.append("type:    ", style="dim")
         body.append(f"{doc_type}   preset: {preset}\n")
         body.append("models:  ", style="dim")
-        body.append(f"{strong_model}  |  {cheap_model}\n")
+        body.append(f"{_short_model(strong_model)}  |  {_short_model(cheap_model)}\n")
         body.append("project: ", style="dim")
         body.append(project_dir)
         self.console.print(Panel(body, title="Theoretical Exploration Bot", border_style="cyan"))
@@ -159,9 +167,13 @@ def _h_research(r: ProgressReporter, payload: dict[str, Any]) -> None:
         r._evidence_sections.add(sid)
         claims = len((ev or {}).get("claims") or [])
         coverage = (ev or {}).get("coverage", "?")
+        if claims:
+            marker, note = "[green]•[/green]", ""
+        else:
+            marker, note = "[yellow]⚠[/yellow]", " [yellow](no evidence)[/yellow]"
         r._line(
-            f"      [green]•[/green] researched [bold]{sid}[/bold] "
-            f"({claims} claims, {coverage}) [dim]{r._delta()}[/dim]"
+            f"      {marker} researched [bold]{sid}[/bold] "
+            f"({claims} claims, {coverage}){note} [dim]{r._delta()}[/dim]"
         )
     for sid in _section_ids(payload, "sources"):
         r._source_ids.add(sid)
@@ -187,6 +199,7 @@ def _h_research_join(r: ProgressReporter, payload: dict[str, Any]) -> None:
 
 def _h_verify(r: ProgressReporter, payload: dict[str, Any]) -> None:
     verification = payload.get("verification") or {}
+    r._phase_header("verify", "Verify citations", f"{len(verification)} sections")
     unresolved = sum(len((v or {}).get("unresolved_cites") or []) for v in verification.values())
     issues = payload.get("issues") or []
     r._issues += len(issues)
@@ -198,12 +211,14 @@ def _h_verify(r: ProgressReporter, payload: dict[str, Any]) -> None:
 
 
 def _h_critique(r: ProgressReporter, payload: dict[str, Any]) -> None:
+    r._phase_header("critique", "Critique")
     issues = payload.get("issues") or []
     r._issues += len(issues)
     r._line(f"      critic raised {len(issues)} issues [dim]{r._delta()}[/dim]")
 
 
 def _h_revise(r: ProgressReporter, payload: dict[str, Any]) -> None:
+    r._phase_header("revise", "Revise")
     if "drafts" in payload:
         _h_draft(r, payload)
     else:
@@ -211,6 +226,7 @@ def _h_revise(r: ProgressReporter, payload: dict[str, Any]) -> None:
 
 
 def _h_synthesize(r: ProgressReporter, payload: dict[str, Any]) -> None:
+    r._phase_header("synthesize", "Synthesize")
     synthesis = payload.get("synthesis")
     if synthesis:
         r._line(f"      synthesis: {len(str(synthesis).split())} words [dim]{r._delta()}[/dim]")
@@ -219,11 +235,13 @@ def _h_synthesize(r: ProgressReporter, payload: dict[str, Any]) -> None:
 
 
 def _h_assemble(r: ProgressReporter, payload: dict[str, Any]) -> None:
+    r._phase_header("assemble", "Assemble")
     words = len(str(payload.get("final_markdown") or "").split())
     r._line(f"      assembled {words} words from {len(r._drafted_sections)} sections")
 
 
 def _h_export(r: ProgressReporter, payload: dict[str, Any]) -> None:
+    r._phase_header("export", "Export")
     outs = payload.get("exports") or {}
     r._line("      exports: " + ", ".join(sorted(outs)) if outs else "      [dim]no export[/dim]")
     for warning in payload.get("errors") or []:
