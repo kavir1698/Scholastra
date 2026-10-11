@@ -1,15 +1,27 @@
-Write a cross-cutting synthesis for the whole document. Draw out tensions and debates across
-sections, identify recurring themes, and forward-looking suggestions for future work.
+Write an OPTIONAL cross-cutting synthesis for the whole document, to be appended as a final
+"Synthesis and Future Directions" section. It is NOT a replacement for editing and must not merely
+restate section introductions.
 
-Use inline citations of the form [@id] but ONLY with ids from AVAILABLE CITE KEYS. Do not
-introduce new unsourced claims.
+Document thesis: {{ contract.thesis }}
+Argument arc:
+{% for step in contract.argument_arc %}- {{ step }}
+{% endfor %}
+
+Use inline citations of the form [@id] but ONLY with ids from AVAILABLE CITE KEYS. Only reference
+claims already supported in the drafts; do not introduce new unsourced claims. Draw out genuine
+tensions and debates across sections, identify recurring themes, and give forward-looking
+suggestions for future work.
 
 AVAILABLE CITE KEYS: {{ cite_keys | join(', ') }}
 
-Section summaries:
-{% for section_id, draft in drafts.items() %}- {{ section_id }}: {{ draft.summary or draft.title }}
+Edited section drafts:
+{% for section_id, draft in drafts.items() %}
+### {{ section_id }}: {{ draft.title }}
+{{ draft.markdown }}
 {% endfor %}
 
-Evidence notes:
-{% for section_id, ev in evidence.items() %}- {{ section_id }}: {{ ev.notes }}
+Source quality summary: {{ source_summary }}
+
+Citation verification summary (do not reintroduce unsupported claims):
+{% for section_id, report in verification.items() %}- {{ section_id }}: unsupported={{ report.unsupported_claims }} partial={{ report.partial_claims }} unresolved={{ report.unresolved_cites }}
 {% endfor %}

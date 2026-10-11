@@ -6,6 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from tests.conftest import RevisionResponder, ThreeRootResponder, TrackingToolProvider
+from theo_explore.agents.fake import FakeBackend, ScriptedResponder
 from theo_explore.graph.build import build_graph
 from theo_explore.models.schemas import Outline, ScopeProposal
 from theo_explore.runtime import make_initial_state, pending_interrupt
@@ -122,6 +123,45 @@ async def test_budget_cap_survives_fanout(deps_factory):
     values = (await graph.aget_state(config)).values
     assert values["budget"]["max_cost_usd"] == 100.0
     assert values["status"] == "completed"
+
+
+class _BlockingVerifier(ScriptedResponder):
+    def _node_verify(self, prompt: str) -> dict:
+        return {"unsupported_claims": ["s1"], "notes": ""}
+
+
+async def test_graph_order_contract_then_editor_then_synthesis(deps_factory):
+    backend = FakeBackend()
+    deps = deps_factory(backend=backend)
+    graph, config = await _run(
+        deps, "order-1", auto=True, synthesize=True, preset="article-long"
+    )
+    nodes = [node for node, _ in backend.calls]
+
+    def first(name: str) -> int:
+        return nodes.index(name) if name in nodes else 10**9
+
+    assert first("contract") < first("plan_research")
+    assert first("draft") < first("verify")
+    assert first("verify") < first("editor")
+    assert first("editor") < first("synthesize")
+
+    values = (await graph.aget_state(config)).values
+    assert values["contract"]["thesis"]
+    assert values["quality"]["contract"]["thesis"]
+    assert deps.workspace("order-1").path("artifacts/contract.json").exists()
+
+
+async def test_strict_gate_blocks_assembly_on_unsupported_claims(deps_factory):
+    deps = deps_factory(responder=_BlockingVerifier())
+    graph, config = await _run(deps, "gate-1", preset="article-long", auto=True)
+    values = (await graph.aget_state(config)).values
+
+    assert values["quality"]["gate"]["strict"] is True
+    assert values["quality"]["gate"]["blocked"] is True
+    assert values["status"] == "blocked"
+    assert "INCOMPLETE DRAFT" in values["final_markdown"]
+    assert deps.workspace("gate-1").path("artifacts/quality_report.json").exists()
 
 
 async def test_mini_book_drafts_nested_leaf_units(deps_factory):

@@ -80,8 +80,27 @@ class RunLogger:
             self._fh = None
 
 
-def build_run_report(manifest: dict[str, Any], budget: dict | None) -> dict[str, Any]:
+def build_run_report(
+    manifest: dict[str, Any], budget: dict | None, quality: dict | None = None
+) -> dict[str, Any]:
     model = as_budget(budget)
+    quality = quality or {}
+    gate = quality.get("gate") or {}
+    verification = quality.get("verification") or {}
+    support_total = 0
+    unsupported_total = 0
+    partial_total = 0
+    section_rates: dict[str, float] = {}
+    for sid, report in verification.items():
+        unsupported = len(report.get("unsupported_claims") or [])
+        partial = len(report.get("partial_claims") or [])
+        resolved = len(report.get("resolved_cites") or [])
+        total = resolved + len(report.get("unresolved_cites") or [])
+        support_total += total
+        unsupported_total += unsupported
+        partial_total += partial
+        if total:
+            section_rates[sid] = round((total - unsupported - partial) / total, 3)
     return {
         "project_id": manifest.get("project_id"),
         "topic": manifest.get("topic"),
@@ -94,5 +113,28 @@ def build_run_report(manifest: dict[str, Any], budget: dict | None) -> dict[str,
         "tool_calls": model.tool_calls,
         "per_node": {k: v.model_dump() for k, v in model.per_node.items()},
         "budget_exceeded": model.exceeded,
+        "quality": {
+            "clean": gate.get("clean", True),
+            "blocked": gate.get("blocked", False),
+            "strict": gate.get("strict", False),
+            "reasons": gate.get("reasons", []),
+            "verification_incomplete": gate.get("verification_incomplete", False),
+            "unsupported_claims": gate.get("unsupported_count", unsupported_total),
+            "partial_claims": gate.get("partial_count", partial_total),
+            "uncited_factual": gate.get("uncited_count", 0),
+            "unresolved_citations": gate.get("unresolved_count", 0),
+            "editorial_findings": gate.get("editorial_findings", 0),
+            "sections_edited": gate.get("sections_edited", []),
+            "source_tiers": gate.get("source_tiers", {}),
+            "full_text_sources": gate.get("full_text_sources", 0),
+            "abstract_only_sources": gate.get("abstract_only_sources", 0),
+            "bibliographic_only_sources": gate.get("bibliographic_only_sources", 0),
+            "citation_support_rate": (
+                round((support_total - unsupported_total) / support_total, 3)
+                if support_total
+                else None
+            ),
+            "per_section_support_rate": section_rates,
+        },
         "generated_at": _utcnow(),
     }

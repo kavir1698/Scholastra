@@ -30,6 +30,7 @@ class DocState(TypedDict, total=False):
     brief: dict[str, Any]
     scope: dict[str, Any]
     outline: dict[str, Any]
+    contract: dict[str, Any]
     research_plan: dict[str, dict[str, Any]]
 
     evidence: Annotated[dict[str, dict[str, Any]], merge_by_key]
@@ -37,9 +38,11 @@ class DocState(TypedDict, total=False):
     drafts: Annotated[dict[str, dict[str, Any]], merge_by_key]
     verification: Annotated[dict[str, dict[str, Any]], merge_by_key]
     issues: Annotated[list[dict[str, Any]], add_lists]
+    editorial: Annotated[list[dict[str, Any]], add_lists]
 
     revision_round: int
     max_revision_rounds: int
+    editor_round: int
     draft_wave: int
 
     synthesize: bool
@@ -47,7 +50,9 @@ class DocState(TypedDict, total=False):
     export_formats: list[str]
 
     synthesis: str | None
+    synthesis_verification: dict[str, Any]
     final_markdown: str
+    quality: dict[str, Any]
     exports: Annotated[dict[str, str], merge_by_key]
     errors: Annotated[list[str], add_lists]
     budget: Annotated[dict[str, Any], merge_budget]

@@ -1,12 +1,41 @@
 Section: {{ section_id }}
 
-For each claim below, decide whether the cited verbatim excerpt actually supports it. List the
-ids (the numeric/atomic claim ids) of claims that are NOT supported. Quote nothing else.
+Verify every claim unit below against the evidence excerpts attached to its citations. For each
+unit decide whether the cited evidence actually entails the sentence, whether the citation scope
+matches the claim, and whether the sentence overclaims beyond the excerpt.
 
-Claims and excerpts:
-{% for claim in claims %}
-- id={{ claim.id }}
-  claim: {{ claim.text }}
-  cited: {{ claim.source_ids | join(', ') }}
-  excerpt: {{ claim.excerpt }}
+Judgments: `supported` (fully entailed), `partial` (excerpt supports only part of the sentence),
+`unsupported` (excerpt does not entail it), `unverifiable` (no usable excerpt / cannot tell).
+Assign severity `info|minor|major|blocking` (unsupported factual overclaims are blocking).
+
+{% if sources %}
+Source provenance:
+{% for sid, source in sources.items() %}- {{ sid }}: tier={{ source.tier }} role={{ source.role }} access={{ source.access_mode }} peer_reviewed={{ source.peer_reviewed }}
 {% endfor %}
+{% endif %}
+
+Cited claim units:
+{% for sentence in sentences %}
+- id={{ sentence.id }}
+  text: {{ sentence.text }}
+  cited: {{ sentence.cited_keys | join(', ') }}
+  evidence:
+{% for ev in sentence.evidence %}
+    * [{{ ev.claim_id }}] source={{ ev.source_ids | join(', ') }} origin={{ ev.origin }} tier={{ ev.tier }} locator={{ ev.locator }}
+      excerpt: {{ ev.excerpt }}
+{% endfor %}
+{% if not sentence.evidence %}
+    * (no retrieved excerpt for these citations)
+{% endif %}
+{% endfor %}
+
+{% if uncited %}
+Uncited factual sentences (decide whether each needs a citation; list the ids that do):
+{% for unit in uncited %}
+- id={{ unit.id }}: {{ unit.text }}
+{% endfor %}
+{% endif %}
+
+Return one result per sentence id above, with the judgment, a short rationale and a severity.
+List the ids of unsupported sentences in `unsupported_claims`, partial ones in `partial_claims`,
+and uncited sentences that need a source in `uncited_factual`. Quote nothing else.

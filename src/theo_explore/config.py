@@ -116,6 +116,25 @@ def list_presets(settings: Settings | None = None) -> list[str]:
     return sorted(p.stem for p in presets_dir.glob("*.yaml"))
 
 
+def load_source_policy(settings: Settings | None = None) -> dict[str, Any]:
+    """Load the source-tier policy, falling back to safe defaults when absent."""
+    settings = settings or get_settings()
+    from theo_explore.sources.policy import TIER_LABELS
+
+    defaults: dict[str, Any] = {
+        "tier_labels": {str(k): v for k, v in TIER_LABELS.items()},
+        "allowed_tiers_for_claims": [1, 2, 3],
+        "allow_orientation_support": False,
+        "prefer_full_text": True,
+        "require_corroborating": True,
+    }
+    path = config_dir(settings) / "source_policy.yaml"
+    if not path.exists():
+        return defaults
+    raw = load_yaml(str(path)) or {}
+    return {**defaults, **raw}
+
+
 def load_mcp_config(settings: Settings | None = None) -> dict[str, Any]:
     settings = settings or get_settings()
     path = config_dir(settings) / "mcp_servers.json"

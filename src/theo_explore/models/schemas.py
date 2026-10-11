@@ -14,6 +14,26 @@ DocType = Literal["article", "mini-book"]
 Coverage = Literal["high", "medium", "low"]
 Severity = Literal["info", "minor", "major", "blocking"]
 SourceKind = Literal["paper", "preprint", "web", "book", "encyclopedia", "other"]
+SourceTier = Literal[1, 2, 3, 4]
+SourceRole = Literal[
+    "primary", "review", "corroborating", "reference", "orientation", "bibliographic", "unknown"
+]
+AccessMode = Literal[
+    "full_text", "abstract", "metadata", "book_metadata", "encyclopedia", "web", "unknown"
+]
+SupportJudgment = Literal["supported", "partial", "unsupported", "unverifiable"]
+ContributionRole = Literal["introduce", "develop", "compare", "apply", "synthesize", "other"]
+FindingKind = Literal[
+    "duplicate_definition",
+    "terminology_drift",
+    "missing_transition",
+    "argument_arc",
+    "contradiction",
+    "ordering",
+    "unsupported_cross_section",
+    "uneven_depth",
+    "other",
+]
 
 
 class _Base(BaseModel):
@@ -112,6 +132,13 @@ class Claim(_Base):
     locator: str | None = Field(
         default=None, description="Page/section/URL anchor for the excerpt."
     )
+    origin: AccessMode = Field(
+        default="unknown",
+        description="Where the excerpt came from: full text, abstract, metadata, book, web.",
+    )
+    tier: SourceTier | None = Field(
+        default=None, description="Provenance tier of the excerpt's source, if known."
+    )
 
 
 class SectionEvidence(_Base):
@@ -137,6 +164,32 @@ class Source(_Base):
     pmid: str | None = None
     bibtex: str | None = Field(default=None, description="Original BibTeX entry if available.")
     accessed: str | None = Field(default=None, description="ISO date the source was retrieved.")
+    # Provenance / access metadata (all optional for backward compatibility).
+    tier: SourceTier | None = Field(
+        default=None, description="Scholarly tier 1-4 per the configured source policy."
+    )
+    role: SourceRole = Field(
+        default="unknown",
+        description="How this source may be used (primary, reference, orientation…).",
+    )
+    peer_reviewed: bool | None = Field(
+        default=None, description="Whether the record is known to be peer reviewed."
+    )
+    access_mode: AccessMode = Field(
+        default="unknown", description="Best evidence available: full text, abstract, metadata…"
+    )
+    full_text_available: bool = Field(
+        default=False, description="Whether full text (not just metadata/abstract) was retrieved."
+    )
+    abstract_only: bool = Field(
+        default=False, description="True when only an abstract is available."
+    )
+    retrieved_url: str | None = Field(
+        default=None, description="URL actually used to retrieve text for this record."
+    )
+    bibliographic_confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Confidence in the bibliographic metadata."
+    )
 
 
 class SectionDraft(_Base):
@@ -145,8 +198,36 @@ class SectionDraft(_Base):
     markdown: str = Field(description="Section prose in Markdown with inline cite keys like [@id].")
     summary: str = Field(default="", description="2-3 sentence summary for dependents/synthesis.")
     cite_keys: list[str] = Field(default_factory=list)
+    stripped_cites: list[str] = Field(
+        default_factory=list,
+        description="Citation keys removed because the section had no evidence for them.",
+    )
     word_count: int = Field(default=0, ge=0)
     revision: int = Field(default=0, ge=0)
+
+
+class SentenceSupport(_Base):
+    """Per-sentence citation-support judgment produced by the verifier."""
+
+    claim_id: str = Field(description="Stable sentence/claim unit id assigned by the pipeline.")
+    section_id: str = Field(default="")
+    subsection: str | None = None
+    text: str = Field(default="", description="The sentence under verification.")
+    cited_keys: list[str] = Field(default_factory=list)
+    judgment: SupportJudgment = Field(default="unverifiable")
+    rationale: str = Field(default="")
+    severity: Severity = Field(default="info")
+    locator: str | None = None
+
+
+class ClaimSupportReport(_Base):
+    """Structured verifier output over draft sentences and their citations."""
+
+    results: list[SentenceSupport] = Field(default_factory=list)
+    unsupported_claims: list[str] = Field(default_factory=list)
+    partial_claims: list[str] = Field(default_factory=list)
+    uncited_factual: list[str] = Field(default_factory=list)
+    notes: str = Field(default="")
 
 
 class SectionVerification(_Base):
@@ -154,6 +235,16 @@ class SectionVerification(_Base):
     resolved_cites: list[str] = Field(default_factory=list)
     unresolved_cites: list[str] = Field(default_factory=list)
     unsupported_claims: list[str] = Field(default_factory=list)
+    partial_claims: list[str] = Field(default_factory=list)
+    uncited_factual: list[str] = Field(default_factory=list)
+    uncited_candidates: list[str] = Field(default_factory=list)
+    support_results: list[SentenceSupport] = Field(default_factory=list)
+    sources_without_excerpt: list[str] = Field(default_factory=list)
+    low_tier_support: list[str] = Field(
+        default_factory=list,
+        description="Sentence ids whose only supporting excerpts are below the claim-support tier.",
+    )
+    verified: bool = Field(default=True, description="Whether the LLM verifier ran successfully.")
     passed: bool = True
 
 
@@ -183,6 +274,114 @@ class ClaimSupport(_Base):
 class SynthesisResult(_Base):
     markdown: str = Field(description="Cross-cutting synthesis in Markdown with inline cite keys.")
     cite_keys: list[str] = Field(default_factory=list)
+
+
+class GlossaryEntry(_Base):
+    """A controlled term and its canonical definition."""
+
+    term: str = Field(description="Canonical term.")
+    definition: str = Field(default="", description="One-sentence canonical definition.")
+    aliases: list[str] = Field(default_factory=list, description="Accepted synonyms.")
+    forbidden_variants: list[str] = Field(
+        default_factory=list, description="Variants that must be normalised to the canonical term."
+    )
+    owner_section: str | None = Field(
+        default=None, description="Section id that owns (first defines) this term."
+    )
+    defined_once: bool = Field(default=True)
+
+
+class SectionHandoff(_Base):
+    """The intended transition from earlier sections into this one."""
+
+    section_id: str
+    from_sections: list[str] = Field(default_factory=list)
+    handoff_goal: str = Field(default="")
+
+
+class ContractContribution(_Base):
+    """The expected contribution of a section or a single leaf unit."""
+
+    section_id: str
+    subsection_id: str | None = None
+    role: ContributionRole = Field(default="develop")
+    expected_contribution: str = Field(default="")
+
+
+class DocumentContract(_Base):
+    """The whole-document coherence contract generated before research/drafting."""
+
+    thesis: str = Field(default="", description="One-sentence thesis of the document.")
+    argument_arc: list[str] = Field(
+        default_factory=list, description="Ordered steps of the intended argument."
+    )
+    glossary: list[GlossaryEntry] = Field(default_factory=list)
+    handoffs: list[SectionHandoff] = Field(default_factory=list)
+    contributions: list[ContractContribution] = Field(default_factory=list)
+    repetition_budget: str = Field(default="", description="How much repetition is acceptable.")
+    terminology_rules: list[str] = Field(default_factory=list)
+    source_policy: list[str] = Field(
+        default_factory=list, description="Explicit source-tier requirements for the run."
+    )
+    notes: str = Field(default="")
+
+
+class EditorialFinding(_Base):
+    """A whole-document coherence problem found by the editor."""
+
+    id: str
+    kind: FindingKind = Field(default="other")
+    severity: Severity = Field(default="minor")
+    sections: list[str] = Field(default_factory=list)
+    description: str = Field(default="")
+    evidence: str | None = None
+
+
+class EditorialEdit(_Base):
+    """A revised section returned by the editor (or an explicit no-change result)."""
+
+    section_id: str
+    revised_markdown: str | None = Field(default=None)
+    changed: bool = Field(default=False)
+    rationale: str = Field(default="")
+
+
+class EditorialResult(_Base):
+    findings: list[EditorialFinding] = Field(default_factory=list)
+    edits: list[EditorialEdit] = Field(default_factory=list)
+    notes: str = Field(default="")
+
+
+class QualityGate(_Base):
+    """The final, inspectable quality verdict recorded for a run."""
+
+    strict: bool = Field(default=False, description="Whether blocking gating was enforced.")
+    blocked: bool = Field(default=False)
+    clean: bool = Field(default=True, description="No quality reasons detected at all.")
+    reasons: list[str] = Field(default_factory=list)
+    verification_incomplete: bool = Field(default=False)
+    unsupported_count: int = Field(default=0)
+    partial_count: int = Field(default=0)
+    uncited_count: int = Field(default=0)
+    unresolved_count: int = Field(default=0)
+    editorial_findings: int = Field(default=0)
+    sections_edited: list[str] = Field(default_factory=list)
+    source_tiers: dict[str, int] = Field(default_factory=dict)
+    full_text_sources: int = Field(default=0)
+    abstract_only_sources: int = Field(default=0)
+    bibliographic_only_sources: int = Field(default=0)
+
+
+class QualityReport(_Base):
+    """Document-level quality artifact persisted for human review."""
+
+    contract: DocumentContract = Field(default_factory=DocumentContract)
+    gate: QualityGate = Field(default_factory=QualityGate)
+    verification: dict[str, SectionVerification] = Field(default_factory=dict)
+    editorial: list[EditorialFinding] = Field(default_factory=list)
+    synthesis_verification: SectionVerification | None = None
+    source_summary: dict[str, int] = Field(default_factory=dict)
+    notes: str = Field(default="")
 
 
 class ToolCall(_Base):
@@ -225,4 +424,7 @@ LLM_SCHEMAS: dict[str, type[BaseModel]] = {
     "SectionEvidence": SectionEvidence,
     "SectionDraft": SectionDraft,
     "Issue": Issue,
+    "DocumentContract": DocumentContract,
+    "ClaimSupportReport": ClaimSupportReport,
+    "EditorialResult": EditorialResult,
 }

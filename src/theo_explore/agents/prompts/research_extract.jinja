@@ -2,6 +2,9 @@ SECTION ID: {{ section_id }}
 SECTION TITLE: {{ section_title }}
 SECTION PURPOSE: {{ section_purpose }}
 
+Document contract (follow it exactly):
+{{ contract or "(none provided)" }}
+
 CANDIDATE SOURCES:
 {% for line in catalog %}{{ line }}
 {% endfor %}
@@ -19,4 +22,8 @@ possible. If the retrieved sources are too thin to support depth, say so in `not
 `coverage` to low.
 
 Every claim MUST cite at least one id from CANDIDATE SOURCES and include a verbatim `excerpt` from
-that source plus a `locator`. Do not invent sources or ids. Return a SectionEvidence object.
+that source plus a `locator`. Set each claim's `origin` to where the excerpt came from:
+`full_text`, `abstract`, `metadata`, `book_metadata`, `encyclopedia` or `web`. Do NOT present a
+metadata-only or unrelated-abstract record as supporting a detailed claim — if only metadata is
+available, either omit the claim or state only what the metadata supports. Do not invent sources or
+ids. Return a SectionEvidence object.

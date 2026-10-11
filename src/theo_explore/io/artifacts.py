@@ -11,7 +11,10 @@ from typing import Any
 
 from theo_explore.models.schemas import (
     Brief,
+    DocumentContract,
+    EditorialFinding,
     Outline,
+    QualityReport,
     ScopeProposal,
     SectionDraft,
     SectionEvidence,
@@ -160,6 +163,21 @@ class Workspace:
         data = self.read_json("artifacts/brief.json")
         return Brief.model_validate(data) if data else None
 
+    def save_contract(self, contract: DocumentContract) -> Path:
+        return self.write_json("artifacts/contract.json", contract.model_dump())
+
+    def load_contract(self) -> DocumentContract | None:
+        data = self.read_json("artifacts/contract.json")
+        return DocumentContract.model_validate(data) if data else None
+
+    def save_editorial(self, findings: list[EditorialFinding]) -> Path:
+        return self.write_json(
+            "artifacts/editorial.json", [f.model_dump() for f in findings]
+        )
+
+    def save_quality_report(self, report: QualityReport) -> Path:
+        return self.write_json("artifacts/quality_report.json", report.model_dump())
+
     # -- manifest ----------------------------------------------------------
     def load_manifest(self) -> dict[str, Any]:
         if not self._manifest:
@@ -177,6 +195,9 @@ class Workspace:
             "artifacts/brief.json",
             "artifacts/scope.json",
             "artifacts/outline.json",
+            "artifacts/contract.json",
+            "artifacts/editorial.json",
+            "artifacts/quality_report.json",
             "artifacts/sources.json",
             "artifacts/final.md",
             "artifacts/refs.bib",

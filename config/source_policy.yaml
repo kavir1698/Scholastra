@@ -1,0 +1,31 @@
+# Tiered scholarly source policy.
+#
+# Applied after source normalisation, because MCP server names do not reliably
+# identify whether a result is full text, an abstract, metadata, a book record
+# or orientation-only web content. A source is classified from its bibliographic
+# metadata and retrieved domain.
+#
+# Tier 1: peer-reviewed primary/review articles and canonical books/classics.
+# Tier 2: reputable preprints/working papers and scholarly repositories.
+# Tier 3: authoritative reference works (encyclopedias, handbooks, curated web).
+# Tier 4: orientation-only web/Wikipedia content.
+
+# Tiers that may support a substantive factual claim.
+allowed_tiers_for_claims: [1, 2, 3]
+
+# When true, Tier 4 (orientation) sources may be used as sole claim support.
+# Default false: Wikipedia/orientation pages must be corroborated.
+allow_orientation_support: false
+
+# Prefer full-text extracts; abstract/metadata-only records carry lower confidence
+# and cannot support a detailed claim on their own.
+prefer_full_text: true
+
+# Every section should seek an independent corroborating source where possible.
+require_corroborating: true
+
+tier_labels:
+  1: "peer-reviewed primary/review article or canonical book/classic"
+  2: "reputable preprint/working paper or scholarly repository record"
+  3: "authoritative reference work (encyclopedia, handbook, curated web)"
+  4: "orientation-only web/Wikipedia content"

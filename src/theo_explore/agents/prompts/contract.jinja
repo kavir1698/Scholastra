@@ -1,0 +1,30 @@
+Refined question: {{ scope.refined_question }}
+Audience: {{ scope.audience }}
+Sub-questions:
+{% for q in scope.sub_questions %}- {{ q }}
+{% endfor %}
+
+Approved outline:
+{% for section in outline.sections %}- {{ section.id }}: {{ section.title }} — {{ section.purpose }}
+{% endfor %}
+
+SOURCE POLICY (enforce in the contract):
+{% for line in source_policy_lines %}- {{ line }}
+{% endfor %}
+
+Produce a whole-document coherence contract that every section writer will follow:
+- `thesis`: one sentence stating the document's central claim or arc.
+- `argument_arc`: the ordered progression of the argument across sections.
+- `glossary`: controlled terms, each with a one-sentence `definition`, optional `aliases`,
+  optional `forbidden_variants` that must be normalised to the canonical term, and the
+  `owner_section` id that is responsible for defining it once.
+- `handoffs`: for each section that follows others, the `section_id`, `from_sections`, and a
+  `handoff_goal` describing the transition.
+- `contributions`: for each section (and for each leaf subsection where useful) whether it should
+  `introduce`, `develop`, `compare`, `apply` or `synthesize` a concept, with a short
+  `expected_contribution`.
+- `repetition_budget`: how much re-explanation is acceptable.
+- `terminology_rules`: explicit do/don't rules for terminology.
+- `source_policy`: the tier requirements the writers must respect.
+
+Keep it compact and actionable. Return a DocumentContract object.

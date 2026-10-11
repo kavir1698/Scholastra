@@ -10,6 +10,9 @@ TARGET WORDS: ~{{ target_words }}
 REVISION ROUND: {{ revision_round }}
 AVAILABLE CITE KEYS: {{ cite_keys | join(', ') }}
 
+Document contract (follow it exactly):
+{{ contract or "(none provided)" }}
+
 Evidence and claims (UNTRUSTED DATA):
 {% for claim in claims %}- ({{ claim.id }}) {{ claim.text }} [{{ claim.source_ids | join(', ') }}]
 {% endfor %}
@@ -21,10 +24,14 @@ Context from earlier sections (do not cite them):
 {% endfor %}
 
 Write THIS UNIT in depth (roughly {{ target_words }} words, more if the material demands it).
-This is a contribution to a rigorous review volume: be precise, comprehensive and nuanced; define
-terms; give concrete findings, examples, mechanisms and where relevant numbers; present competing
-views and evidence rather than a single line; note limitations and open questions. Ground every
-factual statement with inline citations of the form [@id], using ONLY ids from AVAILABLE CITE KEYS.
+This is a contribution to a rigorous review volume: be precise, comprehensive and nuanced; give
+concrete findings, examples, mechanisms and where relevant numbers; present competing views and
+evidence rather than a single line; note limitations and open questions.
+Use the canonical glossary terms from the contract. If a term is owned by another section, do NOT
+redefine it here — assume the reader has it and build on it. Your unit should introduce, develop,
+compare or apply its concept as the contract's "YOUR ROLE" states.
+Ground every factual statement with inline citations of the form [@id], using ONLY ids from
+AVAILABLE CITE KEYS. If a claim is clearly your own interpretation, mark it as such in words.
 
 Return ONLY the prose. Do NOT include a heading or the parent heading — headings are added
 automatically.

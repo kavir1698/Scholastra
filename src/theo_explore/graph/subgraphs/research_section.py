@@ -16,6 +16,8 @@ from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
 from theo_explore.agents.prompting import render, system_preamble
+from theo_explore.config import load_source_policy
+from theo_explore.graph.contract import as_contract, compact_contract
 from theo_explore.graph.deps import Deps
 from theo_explore.graph.reducers import add_lists, merge_budget, merge_by_key
 from theo_explore.models.schemas import (
@@ -25,6 +27,7 @@ from theo_explore.models.schemas import (
     ToolCall,
     ToolPlan,
 )
+from theo_explore.sources.policy import policy_lines
 from theo_explore.sources.registry import catalog_lines, normalize_tool_result, normalize_url
 
 
@@ -34,6 +37,7 @@ class ResearchState(TypedDict, total=False):
     section_title: str
     section_purpose: str
     brief: dict[str, Any]
+    contract: dict[str, Any]
     observations: Annotated[list[str], add_lists]
     next_plan: dict[str, Any]
     tool_calls_used: int
@@ -83,6 +87,7 @@ def _summarize_observation(result: Any, *, limit: int = 1200) -> str:
 def build_research_subgraph(deps: Deps):
     allowlist: list[str] = list(deps.flags.get("research_allowlist") or [])
     tool_timeout = float(deps.flags.get("tool_timeout_seconds", 60))
+    source_policy = load_source_policy(deps.settings)
 
     async def plan_step(state: ResearchState) -> dict[str, Any]:
         brief = ResearchBrief.model_validate(
@@ -139,7 +144,7 @@ def build_research_subgraph(deps: Deps):
                 deps.log("tool_error", section=state["section_id"], tool=call.tool, error=str(exc))
                 continue
             executed += 1
-            for source in normalize_tool_result(call.tool, result):
+            for source in normalize_tool_result(call.tool, result, policy=source_policy):
                 new_sources[source.id] = source.model_dump()
             observations.append(
                 f"[{call.tool}({call.arguments})] {_summarize_observation(result)}"
@@ -158,6 +163,12 @@ def build_research_subgraph(deps: Deps):
 
     async def extract(state: ResearchState) -> dict[str, Any]:
         sources = state.get("sources") or {}
+        contract = as_contract(state.get("contract"))
+        contract_block = compact_contract(
+            contract,
+            section_id=state["section_id"],
+            policy_lines=policy_lines(source_policy),
+        )
         prompt = render(
             "research_extract",
             section_id=state["section_id"],
@@ -165,6 +176,7 @@ def build_research_subgraph(deps: Deps):
             section_purpose=state.get("section_purpose", ""),
             catalog=catalog_lines({sid: _source_view(s) for sid, s in sources.items()}),
             observations="\n".join(state.get("observations", []))[:8000],
+            contract=contract_block,
         )
         try:
             evidence, usage = await deps.llm.structured(
@@ -255,6 +267,22 @@ def _resolve_citation(key: str, lookup: dict[str, str]) -> str | None:
     return None
 
 
+def _origin_for(sid: str, sources: dict[str, Any]) -> str:
+    data = sources.get(sid) or {}
+    mode = data.get("access_mode")
+    if mode and mode != "unknown":
+        return str(mode)
+    return "unknown"
+
+
+def _tier_for(sid: str, sources: dict[str, Any]) -> int | None:
+    tier = (sources.get(sid) or {}).get("tier")
+    try:
+        return int(tier) if tier is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _bind_claims(evidence: SectionEvidence, sources: dict[str, Any], log: Any = None) -> list:
     """Resolve each cited source id leniently; drop only genuinely unknown cites."""
     lookup = _source_lookup(sources)
@@ -269,7 +297,12 @@ def _bind_claims(evidence: SectionEvidence, sources: dict[str, Any], log: Any = 
             elif not resolved:
                 dropped.append(str(raw))
         if valid:
-            bound.append(claim.model_copy(update={"source_ids": valid}))
+            updates: dict[str, Any] = {"source_ids": valid}
+            if not claim.origin or claim.origin == "unknown":
+                updates["origin"] = _origin_for(valid[0], sources)
+            if claim.tier is None:
+                updates["tier"] = _tier_for(valid[0], sources)
+            bound.append(claim.model_copy(update=updates))
         else:
             dropped.append(claim.id)
     if dropped and log is not None:

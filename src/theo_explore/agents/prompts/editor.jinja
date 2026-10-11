@@ -1,0 +1,52 @@
+You are editing a multi-section research document as a whole. You see every section draft at once,
+which individual section writers could not. Your job is to make the document coherent as a single
+argument, NOT to append a new overview.
+
+Outline (intended order):
+{% for section in outline.sections %}- {{ section.id }}: {{ section.title }} — {{ section.purpose }}
+{% endfor %}
+
+Document thesis: {{ contract.thesis }}
+Argument arc:
+{% for step in contract.argument_arc %}- {{ step }}
+{% endfor %}
+Repetition budget: {{ contract.repetition_budget or "(unspecified)" }}
+
+Controlled terminology:
+{% for entry in contract.glossary %}- {{ entry.term }} (owner={{ entry.owner_section or 'n/a' }}){% if entry.aliases %}; aliases: {{ entry.aliases | join(', ') }}{% endif %}{% if entry.forbidden_variants %}; avoid: {{ entry.forbidden_variants | join(', ') }}{% endif %}
+{% endfor %}
+
+Terminology rules:
+{% for rule in contract.terminology_rules %}- {{ rule }}
+{% endfor %}
+
+{% if evidence %}
+Evidence summary (per section):
+{% for sid, ev in evidence.items() %}- {{ sid }}: {{ ev.claims | length }} claims, coverage={{ ev.coverage }}{% if ev.notes %} — {{ ev.notes }}{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if verification %}
+Citation verification summary (per section):
+{% for sid, report in verification.items() %}- {{ sid }}: unresolved={{ report.unresolved_cites }} unsupported={{ report.unsupported_claims }} partial={{ report.partial_claims }}
+{% endfor %}
+{% endif %}
+
+Section drafts (full text):
+{% for sid, draft in drafts.items() %}
+### SECTION {{ sid }}: {{ draft.title }}
+{{ draft.markdown }}
+{% endfor %}
+
+Identify and fix: duplicate definitions of the same concept, terminology drift away from the
+glossary, missing or weak transitions that violate the argument arc, contradictions between
+sections, wrong section ordering, unsupported cross-section claims, and uneven depth.
+
+For each problem emit an `EditorialFinding` with a stable id, `kind`, `severity`, the affected
+`sections`, a concrete `description` and `evidence`.
+
+Then, for ONE OR MORE sections that need change, emit an `EditorialEdit` with the section id, the
+fully REVISED section markdown (`changed=true`), and a rationale. Preserve every heading level and
+every existing inline citation of the form [@id]; you may remove a citation only if you also remove
+its sentence. NEVER introduce a citation key that is not already present in the drafts. If a section
+is fine, either omit it or return it with `changed=false`. Return an EditorialResult object.

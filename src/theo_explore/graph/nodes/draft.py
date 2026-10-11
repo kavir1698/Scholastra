@@ -51,6 +51,7 @@ def make_dispatch_draft(deps: Deps):
                         "subsections": [sub.model_dump() for sub in section.subsections],
                         "evidence": evidence.get(sid, {}),
                         "dep_summaries": dep_summaries,
+                        "contract": state.get("contract") or {},
                         "revision_round": state.get("revision_round", 0),
                     },
                 )

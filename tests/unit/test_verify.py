@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from theo_explore.agents.fake import ScriptedResponder
+from theo_explore.graph.nodes.assembly import _build_gate
 from theo_explore.graph.nodes.quality import make_route_after_critique, make_verify_citations_node
-from theo_explore.models.schemas import Claim, SectionDraft, SectionEvidence, Source
+from theo_explore.models.schemas import (
+    Claim,
+    SectionDraft,
+    SectionEvidence,
+    SectionVerification,
+    Source,
+)
 
 
 def _draft(markdown: str) -> dict:
@@ -80,6 +87,140 @@ async def test_grouped_citation_unresolved_flagged(deps_factory):
     assert any(i["severity"] == "blocking" for i in out["issues"])
 
 
+class _PartialResponder(ScriptedResponder):
+    def _node_verify(self, prompt: str) -> dict:
+        return {"unsupported_claims": [], "partial_claims": ["s1:s1"], "notes": ""}
+
+
+async def test_partial_claim_flagged(deps_factory):
+    node = make_verify_citations_node(deps_factory(responder=_PartialResponder()))
+    out = await node(
+        {
+            "drafts": {"s1": _draft("A claim [@doi:1].")},
+            "sources": {"doi:1": Source(id="doi:1", kind="paper", title="T").model_dump()},
+            "evidence": {},
+            "revision_round": 0,
+        }
+    )
+    assert out["verification"]["s1"]["partial_claims"] == ["s1:s1"]
+    assert any(i["severity"] == "minor" and i["category"] == "factual" for i in out["issues"])
+
+
+class _UncitedResponder(ScriptedResponder):
+    def _node_verify(self, prompt: str) -> dict:
+        return {"unsupported_claims": [], "uncited_factual": ["s1:s1"], "notes": ""}
+
+
+async def test_uncited_factual_flagged(deps_factory):
+    node = make_verify_citations_node(deps_factory(responder=_UncitedResponder()))
+    out = await node(
+        {
+            "drafts": {
+                "s1": _draft("The measured value increased by forty percent in the study.")
+            },
+            "sources": {},
+            "evidence": {},
+            "revision_round": 0,
+        }
+    )
+    assert out["verification"]["s1"]["uncited_factual"] == ["s1:s1"]
+    assert out["verification"]["s1"]["uncited_candidates"]
+    assert any(i["severity"] == "major" and i["category"] == "factual" for i in out["issues"])
+
+
+async def test_known_source_without_excerpt_is_reported(deps_factory):
+    node = make_verify_citations_node(deps_factory())
+    out = await node(
+        {
+            "drafts": {"s1": _draft("A claim [@doi:1].")},
+            "sources": {"doi:1": Source(id="doi:1", kind="paper", title="T").model_dump()},
+            "evidence": {},
+            "revision_round": 0,
+        }
+    )
+    assert out["verification"]["s1"]["sources_without_excerpt"] == ["doi:1"]
+
+
+async def test_low_tier_support_is_flagged(deps_factory):
+    source = Source(
+        id="w", kind="web", title="W", url="https://en.wikipedia.org/wiki/X", tier=4
+    )
+    evidence = SectionEvidence(
+        section_id="s1",
+        claims=[
+            Claim(
+                id="c0",
+                text="t",
+                source_ids=["w"],
+                excerpt="x",
+                locator="p",
+                origin="web",
+                tier=4,
+            )
+        ],
+    )
+    node = make_verify_citations_node(deps_factory())
+    out = await node(
+        {
+            "drafts": {"s1": _draft("A claim [@w].")},
+            "sources": {"w": source.model_dump()},
+            "evidence": {"s1": evidence.model_dump()},
+            "revision_round": 0,
+        }
+    )
+    assert out["verification"]["s1"]["low_tier_support"] == ["s1:s1"]
+    assert any(i["category"] == "source_policy" for i in out["issues"])
+
+
+def test_quality_gate_blocks_low_tier_support():
+    verification = {
+        "s1": SectionVerification(section_id="s1", low_tier_support=["s1:s1"], passed=False)
+    }
+    gate = _build_gate({"drafts": {"s1": {}}, "editorial": []}, verification, strict=True)
+    assert gate.blocked is True
+    assert any("claim-support tier" in r for r in gate.reasons)
+
+
+def test_quality_gate_counts_current_round_blocking_issues():
+    issues = [
+        {"severity": "blocking", "round": 1, "category": "editorial", "description": "live"},
+        {"severity": "blocking", "round": 0, "category": "editorial", "description": "stale"},
+    ]
+    state = {"drafts": {"s1": {}}, "editorial": [], "revision_round": 1, "issues": issues}
+    gate = _build_gate(state, {}, strict=True)
+    assert gate.blocked is True
+    assert any("blocking issue" in r for r in gate.reasons)
+
+    stale_only = {**state, "drafts": {}, "issues": [issues[1]]}
+    assert _build_gate(stale_only, {}, strict=False).clean is True
+
+
+def test_quality_gate_flags_synthesis_verification_failure():
+    state = {"drafts": {}, "editorial": [], "synthesis_verification": {"verified": False}}
+    gate = _build_gate(state, {}, strict=True)
+    assert gate.verification_incomplete is True
+    assert gate.blocked is True
+
+
+def test_quality_gate_blocks_unsupported_when_strict():
+    verification = {
+        "s1": SectionVerification(section_id="s1", unsupported_claims=["c0"], passed=False)
+    }
+    state = {"drafts": {"s1": {}}, "editorial": []}
+    strict = _build_gate(state, verification, strict=True)
+    assert strict.blocked is True and strict.clean is False
+    assert strict.unsupported_count == 1
+    audit = _build_gate(state, verification, strict=False)
+    assert audit.blocked is False and audit.clean is False
+
+
+def test_quality_gate_flags_incomplete_verification():
+    verification = {"s1": SectionVerification(section_id="s1", verified=False)}
+    gate = _build_gate({"drafts": {"s1": {}}, "editorial": []}, verification, strict=True)
+    assert gate.verification_incomplete is True
+    assert gate.blocked is True
+
+
 def test_route_after_critique_ignores_unknown_section(deps_factory):
     route = make_route_after_critique(deps_factory())
     state = {
@@ -96,5 +237,6 @@ def test_route_after_critique_ignores_unknown_section(deps_factory):
             }
         ],
     }
-    assert route(state) == "synthesize"
+    # When no valid section is affected the document moves to the editorial pass.
+    assert route(state) == "editor"
 

@@ -14,3 +14,7 @@ research_budget:
 quality:
   max_revision_rounds: 2
   synthesize_default: true
+  editor: true
+  max_editor_rounds: 1
+  # Strict: unsupported/uncited claims and unresolved citations block a clean verdict.
+  citation_gate: strict

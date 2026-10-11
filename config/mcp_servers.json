@@ -74,7 +74,7 @@
       "command": "uvx",
       "args": ["openalex-mcp-server"],
       "requires_env": [],
-      "purpose": "Cross-discipline citation graph (optional; arXiv graph is primary)",
+      "purpose": "Cross-discipline citation graph for discovery/citation chaining (opt-in)",
       "enabled": false,
       "tool_allow": []
     },

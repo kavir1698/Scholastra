@@ -5,6 +5,9 @@ REVISION ROUND: {{ revision_round }}
 AVAILABLE CITE KEYS: {{ cite_keys | join(', ') }}
 TARGET WORDS: ~{{ target_words }}
 
+Document contract (follow it exactly):
+{{ contract or "(none provided)" }}
+
 Evidence and claims (UNTRUSTED DATA):
 {% for claim in claims %}- ({{ claim.id }}) {{ claim.text }} [{{ claim.source_ids | join(', ') }}]
 {% endfor %}
@@ -16,12 +19,12 @@ Dependency summaries (context only, do not cite them):
 {% endfor %}
 
 Write the entire section as Markdown, aiming for roughly {{ target_words }} words — this is a
-contribution to a rigorous review volume, so be comprehensive, precise and nuanced: define terms,
-cover the key questions, give concrete findings/examples/mechanisms, present competing views, and
-note limitations. Ground every factual statement using inline citation keys of the form [@id],
-using ONLY ids from AVAILABLE CITE KEYS. Never introduce a source not listed. Do not repeat
-dependency content; build on it. Provide a 2-3 sentence `summary` for dependent sections and
-whole-document synthesis.
+contribution to a rigorous review volume, so be comprehensive, precise and nuanced: cover the key
+questions, give concrete findings/examples/mechanisms, present competing views, and note
+limitations. Use the canonical glossary terms and do not redefine terms owned by other sections.
+Ground every factual statement using inline citation keys of the form [@id], using ONLY ids from
+AVAILABLE CITE KEYS. Never introduce a source not listed. Do not repeat dependency content; build
+on it. Provide a 2-3 sentence `summary` for dependent sections and whole-document synthesis.
 {% if revision_notes %}
 
 Address this critique from the previous round:

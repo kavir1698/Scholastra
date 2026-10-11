@@ -1,13 +1,39 @@
-"""Optional whole-document synthesis node."""
+"""Optional whole-document synthesis node.
+
+Synthesis is a cross-cutting conclusion generated from the *edited* drafts and
+the contract. It is validated with the same sentence-level citation verifier
+before assembly, and it can never be the sole coherence mechanism because the
+editor already reconciles the drafts.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
 from theo_explore.agents.prompting import render, system_preamble
+from theo_explore.citations import filter_citations
+from theo_explore.graph.contract import as_contract, bounded_drafts
 from theo_explore.graph.deps import Deps
-from theo_explore.graph.subgraphs.draft_section import filter_citations
-from theo_explore.models.schemas import NodeUsage, SynthesisResult
+from theo_explore.graph.nodes.quality import _add, verify_text
+from theo_explore.models.schemas import (
+    Claim,
+    NodeUsage,
+    SectionEvidence,
+    Source,
+    SynthesisResult,
+)
+from theo_explore.sources.policy import source_quality_summary
+
+
+def _combined_evidence(evidence: dict[str, Any]) -> SectionEvidence:
+    claims: list[Claim] = []
+    for raw in (evidence or {}).values():
+        try:
+            model = SectionEvidence.model_validate(raw)
+        except Exception:  # noqa: BLE001 - tolerate malformed evidence
+            continue
+        claims.extend(model.claims)
+    return SectionEvidence(section_id="synthesis", claims=claims)
 
 
 def make_synthesize_node(deps: Deps):
@@ -18,8 +44,23 @@ def make_synthesize_node(deps: Deps):
         drafts = state.get("drafts") or {}
         evidence = state.get("evidence") or {}
         sources = state.get("sources") or {}
-        cite_keys = sorted({sid for sid in sources})
-        prompt = render("synthesizer", drafts=drafts, evidence=evidence, cite_keys=cite_keys)
+        verification = state.get("verification") or {}
+        contract = as_contract(state.get("contract"))
+        source_models = {k: Source.model_validate(v) for k, v in sources.items()}
+        cite_keys = sorted(source_models)
+        summary = source_quality_summary(source_models)
+        prompt_drafts, truncated = bounded_drafts(drafts)
+        if truncated:
+            deps.log("synthesize_prompt_truncated", sections=truncated)
+        prompt = render(
+            "synthesizer",
+            drafts=prompt_drafts,
+            evidence=evidence,
+            cite_keys=cite_keys,
+            contract=contract,
+            source_summary=summary,
+            verification=verification,
+        )
         try:
             result, usage = await deps.llm.structured(
                 "synthesize",
@@ -35,9 +76,23 @@ def make_synthesize_node(deps: Deps):
         markdown, removed = filter_citations(result.markdown, set(sources))
         if removed:
             deps.log("synthesis_citations_stripped", keys=removed)
-        deps.log("synthesize", words=len(markdown.split()))
+
+        issues: list[dict[str, Any]] = []
+        synthesis_verification: dict[str, Any] | None = None
+        if markdown.strip():
+            combined = _combined_evidence(evidence)
+            synth_report, synth_issues, synth_usage = await verify_text(
+                deps, "synthesis", markdown, source_models, combined
+            )
+            usage = _add(usage, synth_usage)
+            synthesis_verification = synth_report
+            issues.extend(synth_issues)
+
+        deps.log("synthesize", words=len(markdown.split()), issues=len(issues))
         return {
             "synthesis": markdown,
+            "synthesis_verification": synthesis_verification or {},
+            "issues": issues,
             "status": "assemble",
             **deps.budget_delta("synthesize", usage),
         }

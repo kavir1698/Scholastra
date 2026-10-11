@@ -173,6 +173,37 @@ class ScriptedResponder:
             "sections": sections,
         }
 
+    def _node_contract(self, prompt: str) -> dict[str, Any]:
+        section_ids = re.findall(r"^- (\S+):", prompt, re.MULTILINE)
+        glossary = [
+            {
+                "term": "the topic",
+                "definition": "the theoretical subject under investigation",
+                "aliases": ["the subject"],
+                "forbidden_variants": ["the thing"],
+                "owner_section": section_ids[0] if section_ids else None,
+                "defined_once": True,
+            }
+        ]
+        contributions = [
+            {"section_id": sid, "role": "develop", "expected_contribution": f"Develop {sid}."}
+            for sid in section_ids
+        ]
+        return {
+            "thesis": "The topic is best understood through its core concepts and open problems.",
+            "argument_arc": ["Define the topic", "Survey prior work", "Identify open problems"],
+            "glossary": glossary,
+            "handoffs": [],
+            "contributions": contributions,
+            "repetition_budget": "Define each concept once; do not re-introduce it later.",
+            "terminology_rules": ["Use the canonical glossary terms."],
+            "source_policy": ["Prefer peer-reviewed and canonical sources."],
+            "notes": "",
+        }
+
+    def _node_editor(self, prompt: str) -> dict[str, Any]:
+        return {"findings": [], "edits": [], "notes": ""}
+
     def _node_plan_research(self, prompt: str) -> dict[str, Any]:
         return {
             "section_id": _section_id(prompt),

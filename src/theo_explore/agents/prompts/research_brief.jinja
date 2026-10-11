@@ -10,10 +10,14 @@ SUBSECTIONS:
 PREFERRED SOURCE DOMAINS: {{ section.source_domains | join(', ') }}
 TARGET WORDS: {{ section.target_words }}
 
+Document contract (follow it exactly):
+{{ contract or "(none provided)" }}
+
 RESEARCH LIMITS: at most {{ budget.max_tool_calls }} tool calls and {{ budget.max_sources }}
 sources for this section.
 
 Produce a focused research brief that will make this section authoritative: 5–8 high-signal search
 queries covering every subsection and key question (definitions, primary/seed sources, major
 debates, recent work, and critiques), the source domains to prefer, and a tool/source budget no
-larger than the limits above.
+larger than the limits above. Prefer queries that reach peer-reviewed work and canonical sources,
+and plan to retrieve full text rather than metadata alone where the tools allow it.

@@ -14,3 +14,7 @@ research_budget:
 quality:
   max_revision_rounds: 1
   synthesize_default: false
+  editor: true
+  max_editor_rounds: 1
+  # Audit mode for exploratory runs: issues are reported but do not block assembly.
+  citation_gate: audit

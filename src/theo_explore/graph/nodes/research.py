@@ -7,10 +7,19 @@ from typing import Any
 from langgraph.types import Send
 
 from theo_explore.agents.prompting import render, system_preamble
-from theo_explore.config import load_preset
+from theo_explore.config import load_preset, load_source_policy
+from theo_explore.graph.contract import as_contract, compact_contract
 from theo_explore.graph.deps import Deps
-from theo_explore.models.schemas import NodeUsage, Outline, ResearchBrief, ScopeProposal, Source
+from theo_explore.models.schemas import (
+    DocumentContract,
+    NodeUsage,
+    Outline,
+    ResearchBrief,
+    ScopeProposal,
+    Source,
+)
 from theo_explore.observability import budget_exceeded
+from theo_explore.sources.policy import policy_lines
 
 
 def _deterministic_brief(section, budget: dict[str, Any]) -> ResearchBrief:
@@ -31,6 +40,9 @@ def make_plan_research_node(deps: Deps):
         scope = ScopeProposal.model_validate(state["scope"])
         preset = load_preset(scope.length_preset, deps.settings)
         budget = dict(preset.get("research_budget", {}))
+        contract: DocumentContract = as_contract(state.get("contract"))
+        policy = load_source_policy(deps.settings)
+        policy_block = policy_lines(policy)
         plan: dict[str, dict[str, Any]] = {}
         usage = NodeUsage()
         for section in outline.sections:
@@ -41,7 +53,17 @@ def make_plan_research_node(deps: Deps):
                 "max_sources": budget.get("max_sources_per_section", 6),
             }
             fallback = _deterministic_brief(section, budget)
-            prompt = render("research_brief", section=section, budget=limits)
+            contract_block = compact_contract(
+                contract,
+                section_id=section.id,
+                policy_lines=policy_block,
+            )
+            prompt = render(
+                "research_brief",
+                section=section,
+                budget=limits,
+                contract=contract_block,
+            )
             try:
                 brief, node_usage = await deps.llm.structured(
                     "plan_research",
@@ -104,6 +126,7 @@ def make_dispatch_research(deps: Deps):
                         "section_title": section.title,
                         "section_purpose": section.purpose,
                         "brief": state["research_plan"].get(section.id, {}),
+                        "contract": state.get("contract") or {},
                     },
                 )
             )

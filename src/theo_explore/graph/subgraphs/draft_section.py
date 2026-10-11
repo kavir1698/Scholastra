@@ -17,6 +17,7 @@ from typing_extensions import TypedDict
 
 from theo_explore.agents.prompting import render, system_preamble
 from theo_explore.citations import filter_citations, iter_citation_keys
+from theo_explore.graph.contract import as_contract, compact_contract, normalize_terminology
 from theo_explore.graph.deps import Deps
 from theo_explore.graph.reducers import merge_budget, merge_by_key
 from theo_explore.models.schemas import NodeUsage, SectionDraft, SectionEvidence
@@ -31,6 +32,7 @@ class DraftState(TypedDict, total=False):
     subsections: list[dict[str, Any]]
     evidence: dict[str, Any]
     dep_summaries: list[str]
+    contract: dict[str, Any]
     revision_round: int
     revision_notes: str
     target_words: int
@@ -123,14 +125,20 @@ def build_draft_subgraph(deps: Deps):
         revision_notes = state.get("revision_notes", "")
         revision_round = state.get("revision_round", 0)
         subsections = state.get("subsections") or []
+        contract = as_contract(state.get("contract"))
+        section_contract = compact_contract(contract, section_id=state["section_id"])
 
         async def draft_leaf(unit: dict[str, Any], index: int) -> tuple[str, NodeUsage]:
             target = int(unit.get("target_words") or 0)
+            leaf_id = unit.get("id") or f"{state['section_id']}-leaf-{index + 1}"
+            leaf_contract = compact_contract(
+                contract, section_id=state["section_id"], subsection_id=leaf_id
+            )
             prompt = render(
                 "subsection",
                 section_id=state["section_id"],
                 section_title=section_title,
-                subsection_id=unit.get("id") or f"{state['section_id']}-leaf-{index + 1}",
+                subsection_id=leaf_id,
                 subsection_title=unit.get("title") or "Discussion",
                 subsection_purpose=unit.get("purpose", ""),
                 key_questions=unit.get("key_questions", []),
@@ -139,6 +147,7 @@ def build_draft_subgraph(deps: Deps):
                 cite_keys=keys,
                 claims=claims,
                 dep_summaries=dep_summaries,
+                contract=leaf_contract,
                 revision_notes=revision_notes,
             )
             return await _draft_one(prompt, target, state["section_id"])
@@ -176,6 +185,7 @@ def build_draft_subgraph(deps: Deps):
                 cite_keys=keys,
                 claims=claims,
                 dep_summaries=dep_summaries,
+                contract=section_contract,
                 revision_notes=revision_notes,
             )
             markdown, usage = await _draft_one(
@@ -185,6 +195,13 @@ def build_draft_subgraph(deps: Deps):
                 parts.append(_strip_leading_heading(markdown))
 
         markdown = "\n\n".join(part for part in parts if part.strip())
+        markdown, term_changes = normalize_terminology(markdown, contract)
+        if term_changes:
+            deps.log(
+                "draft_terminology_normalized",
+                section=state["section_id"],
+                changes=term_changes[:5],
+            )
         draft = SectionDraft(
             section_id=state["section_id"],
             title=section_title,
@@ -206,6 +223,7 @@ def build_draft_subgraph(deps: Deps):
             update={
                 "markdown": markdown,
                 "cite_keys": keys,
+                "stripped_cites": sorted(set(removed)),
                 "word_count": word_count(markdown),
             }
         )
