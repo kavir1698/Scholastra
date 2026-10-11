@@ -122,3 +122,14 @@ async def test_budget_cap_survives_fanout(deps_factory):
     values = (await graph.aget_state(config)).values
     assert values["budget"]["max_cost_usd"] == 100.0
     assert values["status"] == "completed"
+
+
+async def test_mini_book_drafts_nested_leaf_units(deps_factory):
+    """Sub-subsections are drafted and rendered as deeper headings."""
+    deps = deps_factory()
+    graph, config = await _run(
+        deps, "deep-1", preset="mini-book", doc_type="mini-book", auto=True
+    )
+    md = (await graph.aget_state(config)).values["final_markdown"]
+    assert "#### " in md  # level-4 heading for a drafted sub-subsection leaf
+    assert "### " in md  # level-3 heading for a subsection

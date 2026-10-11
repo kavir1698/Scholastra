@@ -46,6 +46,10 @@ class ScopeProposal(_Base):
         default_factory=list, description="Assumptions made in the absence of clarification."
     )
     length_preset: str = Field(default="article-short", description="Length preset to apply.")
+    scope_rationale: str = Field(
+        default="",
+        description="Why the scope admits comprehensive, authoritative depth at the target length.",
+    )
 
 
 class Subsection(_Base):
@@ -54,6 +58,11 @@ class Subsection(_Base):
     purpose: str = Field(description="One sentence on what this subsection establishes.")
     key_questions: list[str] = Field(default_factory=list)
     target_words: int = Field(default=350, ge=0)
+    children: list[Subsection] = Field(
+        default_factory=list,
+        description="Nested sub-subsections. Each leaf (a subsection with no children) is "
+        "drafted by its own generation; parents contribute a heading and structure only.",
+    )
 
 
 class Section(_Base):

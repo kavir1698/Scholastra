@@ -49,6 +49,42 @@ class FakeBackend:
         )
 
 
+def _fake_subsections(sid: str, title: str, words: int, preset: str) -> list[dict[str, Any]]:
+    core = {
+        "id": f"{sid}-a",
+        "title": f"{title}: core",
+        "purpose": "Introduce the core idea.",
+        "key_questions": ["What is the core idea?"],
+        "target_words": max(words // 2, 50),
+    }
+    if preset != "mini-book":
+        return [core]
+    core["children"] = [
+        {
+            "id": f"{sid}-a-1",
+            "title": f"{title}: core I",
+            "purpose": "Definition and scope.",
+            "key_questions": ["What is it?"],
+            "target_words": max(words // 4, 40),
+        },
+        {
+            "id": f"{sid}-a-2",
+            "title": f"{title}: core II",
+            "purpose": "Key distinctions.",
+            "key_questions": ["How is it distinguished?"],
+            "target_words": max(words // 4, 40),
+        },
+    ]
+    context = {
+        "id": f"{sid}-b",
+        "title": f"{title}: context",
+        "purpose": "Set context.",
+        "key_questions": ["Why does it matter?"],
+        "target_words": max(words // 3, 50),
+    }
+    return [core, context]
+
+
 class ScriptedResponder:
     """Produces deterministic, schema-valid shapes for each node."""
 
@@ -92,15 +128,7 @@ class ScriptedResponder:
                 "depends_on": deps,
                 "source_domains": domains,
                 "required": True,
-                "subsections": [
-                    {
-                        "id": f"{sid}-a",
-                        "title": f"{title}: core",
-                        "purpose": "Introduce the core idea.",
-                        "key_questions": ["What is the core idea?"],
-                        "target_words": max(words // 2, 50),
-                    }
-                ],
+                "subsections": _fake_subsections(sid, title, words, preset),
             }
 
         preset = _preset(prompt)
@@ -199,10 +227,11 @@ class ScriptedResponder:
             body += " ".join(f"Supported claim [@{k}]." for k in keys)
         else:
             body += "No sources were available, so no citations are made."
+        title = _subsection_title(prompt) or _section_title(prompt)
         return {
             "section_id": _section_id(prompt),
-            "title": _section_title(prompt),
-            "markdown": f"## {_section_title(prompt)}\n\n{body}",
+            "title": title,
+            "markdown": f"## {title}\n\n{body}",
             "summary": "A grounded summary of the section.",
             "cite_keys": keys,
             "word_count": len(body.split()),
@@ -237,6 +266,11 @@ def _section_title(prompt: str) -> str:
     if match:
         return match.group(1).strip()
     return "Section"
+
+
+def _subsection_title(prompt: str) -> str | None:
+    match = re.search(r"SUBSECTION[_ ]TITLE:\s*(.+)", prompt)
+    return match.group(1).strip() if match else None
 
 
 def _revision(prompt: str) -> int:

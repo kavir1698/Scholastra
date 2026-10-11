@@ -330,6 +330,12 @@ def _print_summary(project_id: str, settings: Settings) -> None:
         f"issues: {manifest.get('issues', 0)}  "
         f"revisions: {manifest.get('revision_rounds', 0)}"
     )
+    target = manifest.get("target_words") or {}
+    if manifest.get("word_count") is not None:
+        span = ""
+        if target.get("min"):
+            span = f" (target {target.get('min')}–{target.get('max')})"
+        console.print(f"  words: {manifest.get('word_count')}{span}")
     outputs = manifest.get("exports", {})
     if outputs:
         console.print("  outputs: " + ", ".join(f"{k}={v}" for k, v in outputs.items()))

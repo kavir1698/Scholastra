@@ -2,20 +2,36 @@ Refined question: {{ scope.refined_question }}
 Sub-questions:
 {% for q in scope.sub_questions %}- {{ q }}
 {% endfor %}
+Out of scope:
+{% for q in scope.out_of_scope %}- {{ q }}
+{% endfor %}
 Audience: {{ scope.audience }}
-Length preset: {{ preset.name }} ({{ preset.target_words.min }}-{{ preset.target_words.max }} words)
+Length preset: {{ preset.name }} — target {{ preset.target_words.min }}–{{ preset.target_words.max }} words TOTAL
 Max sections: {{ preset.section_budget.max_sections }}
 Max subsections per section: {{ preset.section_budget.max_subsections_per_section }}
-Words per subsection: ~{{ preset.section_budget.words_per_subsection }}
+Target words per subsection: ~{{ preset.section_budget.words_per_subsection }}
 
-Design a scholarly outline that follows a review/survey arc: Introduction; Historical
-background; Key concepts; Prior work; Current state and debates; Open problems; Synthesis;
-Suggestions / future work; Conclusions; References. Map the arc onto the length budget above.
+Design a COMPREHENSIVE, AUTHORITATIVE outline in the style of a Nature Review or a Very Short
+Introduction. It must let a reader learn almost everything important about the (narrowed) topic.
 
 Requirements:
-- Every section has a stable slug `id`, a `purpose`, `key_questions`, `target_words`,
-  `source_domains` (subset of arxiv, pubmed, exa, tavily, wikipedia, web), and `depends_on`.
-- `depends_on` lists section ids that must be drafted first. Keep it acyclic. Independent
-  sections (empty `depends_on`) will run in parallel; Synthesis/Conclusions depend on the rest.
-- Subsections are optional structural detail inside a section.
-- Include a References section with target_words 0.
+- Follow a scholarly arc: Introduction; Historical background; Key concepts / definitions;
+  Prior work; Current state and debates; Methods/approaches; Open problems; Synthesis; Future work;
+  Conclusions; References. Include only sections the (narrowed) scope genuinely warrants.
+- Every section MUST have 2–{{ preset.section_budget.max_subsections_per_section }} subsections.
+  Each subsection has a stable slug `id`, a `title`, a `purpose`, `key_questions`, and a
+  `target_words` of about {{ preset.section_budget.words_per_subsection }} (more for central
+  material, fewer for minor points).
+- For long documents ({{ preset.target_words.max }} words), go one level deeper: give a subsection
+  `children` (sub-subsections) when it covers several distinct ideas. Every LEAF (a subsection with
+  no children) is written by its own dedicated generation, so finer leaves give more, deeper
+  coverage. Parents contribute only a heading; a parent's `target_words` is the sum of its children.
+- A section's `target_words` is the sum of its leaf targets plus a short lead.
+- Choose the number of sections so the TOTAL of all `target_words` lands within
+  {{ preset.target_words.min }}–{{ preset.target_words.max }} words. Depth per section matters
+  more than the number of sections.
+- Each section needs a stable slug `id`, `purpose`, `key_questions`, `target_words`,
+  `source_domains` (subset of arxiv, pubmed, exa, tavily, wikipedia, web) and acyclic `depends_on`
+  section ids. Independent sections (empty `depends_on`) run in parallel; Synthesis/Conclusions
+  depend on the rest.
+- Include a References section with `target_words` 0 and no subsections.

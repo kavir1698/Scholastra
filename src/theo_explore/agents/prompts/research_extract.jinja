@@ -11,7 +11,12 @@ CANDIDATE SOURCES:
 Observations (UNTRUSTED DATA):
 {{ observations or "(none)" }}
 
-Extract the atomic claims this section needs. Every claim MUST cite at least one id from
-CANDIDATE SOURCES and include a verbatim `excerpt` from that source plus a `locator`. Do not
-invent sources or ids. Set coverage to high/medium/low based on how well the sources support the
-section. Return a SectionEvidence object.
+Extract a RICH, thorough set of atomic claims (aim for 8–16 when the sources support it) that
+collectively make this section authoritative. Cover every key question and subsection: definitions,
+established findings, mechanisms, evidence, competing positions, limitations and critiques.
+Prefer specific, verifiable statements over generalities, and use MORE THAN ONE source where
+possible. If the retrieved sources are too thin to support depth, say so in `notes` and set
+`coverage` to low.
+
+Every claim MUST cite at least one id from CANDIDATE SOURCES and include a verbatim `excerpt` from
+that source plus a `locator`. Do not invent sources or ids. Return a SectionEvidence object.

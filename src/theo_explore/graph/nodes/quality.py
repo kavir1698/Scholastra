@@ -14,6 +14,7 @@ from theo_explore.models.schemas import (
     Issue,
     IssueList,
     NodeUsage,
+    Outline,
     SectionDraft,
     SectionEvidence,
     SectionVerification,
@@ -172,6 +173,8 @@ def make_route_after_critique(deps: Deps):
             return "synthesize"
 
         evidence = state.get("evidence") or {}
+        outline = Outline.model_validate(state.get("outline") or {"title": "", "sections": []})
+        sections_by_id = {s.id: s for s in outline.sections}
         sends: list[Send] = []
         for sid in affected:
             notes = "\n".join(
@@ -179,6 +182,7 @@ def make_route_after_critique(deps: Deps):
                 for i in blocking
                 if i.get("target_section") == sid
             )
+            section = sections_by_id.get(sid)
             sends.append(
                 Send(
                     "revise_section",
@@ -186,8 +190,11 @@ def make_route_after_critique(deps: Deps):
                         "project_id": state["project_id"],
                         "section_id": sid,
                         "section_title": (drafts.get(sid) or {}).get("title", sid),
-                        "section_purpose": "",
-                        "target_words": (drafts.get(sid) or {}).get("word_count", 400),
+                        "section_purpose": section.purpose if section else "",
+                        "target_words": section.target_words if section else 400,
+                        "subsections": (
+                            [sub.model_dump() for sub in section.subsections] if section else []
+                        ),
                         "evidence": evidence.get(sid, {}),
                         "dep_summaries": [],
                         "revision_round": round_no + 1,

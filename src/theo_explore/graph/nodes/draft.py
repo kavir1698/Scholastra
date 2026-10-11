@@ -48,6 +48,7 @@ def make_dispatch_draft(deps: Deps):
                         "section_title": section.title,
                         "section_purpose": section.purpose,
                         "target_words": section.target_words,
+                        "subsections": [sub.model_dump() for sub in section.subsections],
                         "evidence": evidence.get(sid, {}),
                         "dep_summaries": dep_summaries,
                         "revision_round": state.get("revision_round", 0),

@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.types import interrupt
 
 from theo_explore.agents.prompting import render, system_preamble
+from theo_explore.config import load_preset
 from theo_explore.graph.deps import Deps
 from theo_explore.models.schemas import Brief, ScopeProposal
 
@@ -14,7 +15,8 @@ from theo_explore.models.schemas import Brief, ScopeProposal
 def make_scope_node(deps: Deps):
     async def scope(state: dict[str, Any]) -> dict[str, Any]:
         brief = Brief.model_validate(state["brief"])
-        prompt = render("scoper", brief=brief)
+        preset = load_preset(brief.preset, deps.settings)
+        prompt = render("scoper", brief=brief, preset=preset)
         messages = [{"role": "user", "content": prompt}]
         proposal, usage = await deps.llm.structured(
             "scope",

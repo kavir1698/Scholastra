@@ -1,12 +1,15 @@
 """``draft_section`` subgraph: prepare -> write -> post-check.
 
-The post-check enforces the hard rule that a draft may not cite any source that
-is absent from that section's evidence: unknown inline cite keys are stripped and
-recorded, and the word count is recomputed from the sanitised Markdown.
+Depth comes from drafting every LEAF unit (a subsection with no children) as its
+own focused generation, concurrently, then joining the tree under the section
+heading. Parents contribute a heading only. A short expand retry lifts any leaf
+that falls short of its target. The post-check enforces the hard rule that a
+draft may not cite any source absent from that section's evidence.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated, Any
 
 from langgraph.graph import END, START, StateGraph
@@ -16,7 +19,7 @@ from theo_explore.agents.prompting import render, system_preamble
 from theo_explore.citations import filter_citations, iter_citation_keys
 from theo_explore.graph.deps import Deps
 from theo_explore.graph.reducers import merge_budget, merge_by_key
-from theo_explore.models.schemas import SectionDraft, SectionEvidence
+from theo_explore.models.schemas import NodeUsage, SectionDraft, SectionEvidence
 from theo_explore.utils import word_count
 
 
@@ -25,6 +28,7 @@ class DraftState(TypedDict, total=False):
     section_id: str
     section_title: str
     section_purpose: str
+    subsections: list[dict[str, Any]]
     evidence: dict[str, Any]
     dep_summaries: list[str]
     revision_round: int
@@ -46,26 +50,40 @@ def _evidence_from_state(state: DraftState) -> SectionEvidence:
         return SectionEvidence(section_id=state["section_id"])
 
 
+def _add(left: NodeUsage, right: NodeUsage) -> NodeUsage:
+    return NodeUsage(
+        calls=left.calls + right.calls,
+        tokens_in=left.tokens_in + right.tokens_in,
+        tokens_out=left.tokens_out + right.tokens_out,
+        cost_usd=left.cost_usd + right.cost_usd,
+    )
+
+
+def walk_units(units: list[dict[str, Any]], depth: int = 1):
+    """Yield ``(depth, unit, has_children)`` for the subtree, in document order."""
+    for unit in units:
+        children = unit.get("children") or []
+        yield depth, unit, bool(children)
+        if children:
+            yield from walk_units(children, depth + 1)
+
+
+def _strip_leading_heading(markdown: str) -> str:
+    lines = markdown.lstrip().splitlines()
+    if lines and lines[0].lstrip().startswith("#"):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+    return "\n".join(lines).strip()
+
+
 def build_draft_subgraph(deps: Deps):
     async def prepare(state: DraftState) -> dict[str, Any]:
         evidence = _evidence_from_state(state)
         keys = sorted({sid for claim in evidence.claims for sid in claim.source_ids})
         return {"available_keys": keys}
 
-    async def write(state: DraftState) -> dict[str, Any]:
-        evidence = _evidence_from_state(state)
-        prompt = render(
-            "drafter",
-            section_id=state["section_id"],
-            section_title=state.get("section_title", state["section_id"]),
-            section_purpose=state.get("section_purpose", ""),
-            revision_round=state.get("revision_round", 0),
-            target_words=state.get("target_words", 400),
-            cite_keys=state.get("available_keys", []),
-            claims=[c.model_dump() for c in evidence.claims],
-            dep_summaries=state.get("dep_summaries", []),
-            revision_notes=state.get("revision_notes", ""),
-        )
+    async def _draft_one(prompt: str, target_words: int, section_id: str) -> tuple[str, NodeUsage]:
         draft, usage = await deps.llm.structured(
             "draft",
             SectionDraft,
@@ -73,11 +91,106 @@ def build_draft_subgraph(deps: Deps):
             extra_system=system_preamble("Drafter", untrusted=True),
             max_repairs=1,
         )
-        draft = draft.model_copy(
-            update={
-                "section_id": state["section_id"],
-                "revision": state.get("revision_round", 0),
-            }
+        markdown = draft.markdown or ""
+        # One bounded expansion pass when the unit falls short of its target.
+        if target_words and word_count(markdown) < 0.6 * target_words:
+            follow_up = (
+                f"{prompt}\n\nYour previous draft was only {word_count(markdown)} words. "
+                f"Expand it to about {target_words} words: add depth, mechanism, examples, "
+                "numbers, competing views and limitations. Keep the same inline citations."
+            )
+            try:
+                expanded, extra_usage = await deps.llm.structured(
+                    "draft",
+                    SectionDraft,
+                    [{"role": "user", "content": follow_up}],
+                    extra_system=system_preamble("Drafter", untrusted=True),
+                    max_repairs=1,
+                )
+                usage = _add(usage, extra_usage)
+                if word_count(expanded.markdown or "") > word_count(markdown):
+                    markdown = expanded.markdown or markdown
+            except Exception as exc:  # noqa: BLE001 - keep the original draft
+                deps.log("draft_expand_failed", section=section_id, error=str(exc))
+        return markdown, usage
+
+    async def write(state: DraftState) -> dict[str, Any]:
+        evidence = _evidence_from_state(state)
+        keys = state.get("available_keys", [])
+        section_title = state.get("section_title", state["section_id"])
+        claims = [c.model_dump() for c in evidence.claims]
+        dep_summaries = state.get("dep_summaries", [])
+        revision_notes = state.get("revision_notes", "")
+        revision_round = state.get("revision_round", 0)
+        subsections = state.get("subsections") or []
+
+        async def draft_leaf(unit: dict[str, Any], index: int) -> tuple[str, NodeUsage]:
+            target = int(unit.get("target_words") or 0)
+            prompt = render(
+                "subsection",
+                section_id=state["section_id"],
+                section_title=section_title,
+                subsection_id=unit.get("id") or f"{state['section_id']}-leaf-{index + 1}",
+                subsection_title=unit.get("title") or "Discussion",
+                subsection_purpose=unit.get("purpose", ""),
+                key_questions=unit.get("key_questions", []),
+                target_words=target or 400,
+                revision_round=revision_round,
+                cite_keys=keys,
+                claims=claims,
+                dep_summaries=dep_summaries,
+                revision_notes=revision_notes,
+            )
+            return await _draft_one(prompt, target, state["section_id"])
+
+        parts: list[str] = [f"## {section_title}"]
+        usage = NodeUsage()
+
+        if subsections:
+            nodes = list(walk_units(subsections))
+            leaves = [(depth, unit) for depth, unit, has_children in nodes if not has_children]
+            leaf_results = await asyncio.gather(
+                *(draft_leaf(unit, i) for i, (_, unit) in enumerate(leaves))
+            )
+            leaf_markdown = [markdown for markdown, _ in leaf_results]
+            for _, node_usage in leaf_results:
+                usage = _add(usage, node_usage)
+
+            leaf_index = 0
+            for depth, unit, has_children in nodes:
+                level = min(depth + 2, 6)
+                parts.append(f"{'#' * level} {unit.get('title') or 'Section'}")
+                if not has_children:
+                    body = _strip_leading_heading(leaf_markdown[leaf_index])
+                    leaf_index += 1
+                    if body:
+                        parts.append(body)
+        else:
+            prompt = render(
+                "drafter",
+                section_id=state["section_id"],
+                section_title=section_title,
+                section_purpose=state.get("section_purpose", ""),
+                revision_round=revision_round,
+                target_words=state.get("target_words", 600),
+                cite_keys=keys,
+                claims=claims,
+                dep_summaries=dep_summaries,
+                revision_notes=revision_notes,
+            )
+            markdown, usage = await _draft_one(
+                prompt, state.get("target_words", 600), state["section_id"]
+            )
+            if markdown.strip():
+                parts.append(_strip_leading_heading(markdown))
+
+        markdown = "\n\n".join(part for part in parts if part.strip())
+        draft = SectionDraft(
+            section_id=state["section_id"],
+            title=section_title,
+            markdown=markdown,
+            revision=revision_round,
+            word_count=word_count(markdown),
         )
         return {
             "drafts": {state["section_id"]: draft.model_dump()},

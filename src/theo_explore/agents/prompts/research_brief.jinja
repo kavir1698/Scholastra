@@ -4,11 +4,16 @@ SECTION PURPOSE: {{ section.purpose }}
 KEY QUESTIONS:
 {% for q in section.key_questions %}- {{ q }}
 {% endfor %}
+SUBSECTIONS:
+{% for sub in section.subsections %}- {{ sub.title }}: {{ sub.purpose }}
+{% endfor %}
 PREFERRED SOURCE DOMAINS: {{ section.source_domains | join(', ') }}
 TARGET WORDS: {{ section.target_words }}
 
 RESEARCH LIMITS: at most {{ budget.max_tool_calls }} tool calls and {{ budget.max_sources }}
 sources for this section.
 
-Produce a focused research brief: a small set of high-signal search queries, the source domains
-to prefer, and a tool/source budget no larger than the limits above.
+Produce a focused research brief that will make this section authoritative: 5–8 high-signal search
+queries covering every subsection and key question (definitions, primary/seed sources, major
+debates, recent work, and critiques), the source domains to prefer, and a tool/source budget no
+larger than the limits above.

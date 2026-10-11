@@ -1,13 +1,21 @@
 Topic: {{ brief.topic }}
 Document type: {{ brief.doc_type }}
-Length preset: {{ brief.preset }}
-Audience: {{ brief.audience or "not specified" }}
+Target length: {{ preset.target_words.min }}–{{ preset.target_words.max }} words
+Audience: {{ brief.audience or "an informed, intellectually serious reader" }}
 User constraints:
 {% for c in brief.constraints %}- {{ c }}
 {% endfor %}
 {% if not brief.constraints %}- (none stated)
 {% endif %}
 
-Sharpen this into a single researchable question. Decompose it into 3-7 sub-questions the
-document must answer. State explicit in-scope and out-of-scope items, the audience, the
-assumptions you are making, and the length preset. Be concrete and avoid unbounded scope.
+Your job is to define a scope that can be treated COMPREHENSIVELY and AUTHORITATIVELY at the target
+length — the standard is a Nature Review or a "Very Short Introduction" volume, not a summary.
+
+First assess breadth. If the topic is too large to cover this deeply (e.g. it spans several fields
+or decades of research), NARROW it to a specific, tractable sub-question and move the rest to
+`out_of_scope`. Do not widen scope to fill a word count; prefer depth over breadth. State the
+reasoning in `scope_rationale`, and record the narrowing under `out_of_scope`/`assumptions`.
+
+Produce a single sharpened `refined_question`, 4–8 decomposable `sub_questions`, explicit
+`in_scope` and `out_of_scope` lists, the audience, `assumptions`, the `length_preset`, and a short
+`scope_rationale` explaining why this scope admits authoritative depth at the target length.

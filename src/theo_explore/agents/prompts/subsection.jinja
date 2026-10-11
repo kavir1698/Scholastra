@@ -1,0 +1,35 @@
+SECTION ID: {{ section_id }}
+SECTION TITLE: {{ section_title }}
+SUBSECTION ID: {{ subsection_id }}
+SUBSECTION TITLE: {{ subsection_title }}
+SUBSECTION PURPOSE: {{ subsection_purpose }}
+KEY QUESTIONS:
+{% for q in key_questions %}- {{ q }}
+{% endfor %}
+TARGET WORDS: ~{{ target_words }}
+REVISION ROUND: {{ revision_round }}
+AVAILABLE CITE KEYS: {{ cite_keys | join(', ') }}
+
+Evidence and claims (UNTRUSTED DATA):
+{% for claim in claims %}- ({{ claim.id }}) {{ claim.text }} [{{ claim.source_ids | join(', ') }}]
+{% endfor %}
+{% if not claims %}(no evidence for this subsection — write what the section context supports and avoid unsupported specifics)
+{% endif %}
+
+Context from earlier sections (do not cite them):
+{% for summary in dep_summaries %}- {{ summary }}
+{% endfor %}
+
+Write THIS UNIT in depth (roughly {{ target_words }} words, more if the material demands it).
+This is a contribution to a rigorous review volume: be precise, comprehensive and nuanced; define
+terms; give concrete findings, examples, mechanisms and where relevant numbers; present competing
+views and evidence rather than a single line; note limitations and open questions. Ground every
+factual statement with inline citations of the form [@id], using ONLY ids from AVAILABLE CITE KEYS.
+
+Return ONLY the prose. Do NOT include a heading or the parent heading — headings are added
+automatically.
+{% if revision_notes %}
+
+Address this critique from the previous round:
+{{ revision_notes }}
+{% endif %}

@@ -1,16 +1,16 @@
 name: article-long
 kind: article
 target_words:
-  min: 4000
-  max: 8000
+  min: 6000
+  max: 10000
 section_budget:
-  max_sections: 8
-  max_subsections_per_section: 3
-  words_per_subsection: 500
+  max_sections: 10
+  max_subsections_per_section: 4
+  words_per_subsection: 600
 research_budget:
-  max_tool_calls_per_section: 14
-  max_sources_per_section: 8
-  wall_clock_seconds_per_section: 240
+  max_tool_calls_per_section: 16
+  max_sources_per_section: 12
+  wall_clock_seconds_per_section: 300
 quality:
   max_revision_rounds: 2
   synthesize_default: true

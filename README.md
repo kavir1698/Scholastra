@@ -127,6 +127,12 @@ intake → scope →[HITL]→ outline →[HITL]→ plan_research
 
 - **Dependency semantics.** Each section carries `depends_on`. Independent sections research and
   draft concurrently; "Synthesis"/"Conclusions" wait for their dependencies.
+- **Depth.** The outline is a recursive tree (section → subsection → sub-subsection). Every **leaf**
+  unit is drafted by its own dedicated generation — concurrently, then joined under its headings —
+  with an enforced word target and an expand retry, so documents stay comprehensive and
+  authoritative (Nature Review / "Very Short Introduction" standard) rather than a summary. The
+  scoper narrows an over-broad topic so it can be treated deeply at the chosen length; if the
+  assembled document still falls below the preset's word target, the run reports a warning.
 - **HITL.** `interrupt()` pauses at scope and outline; resume with `Command(resume=...)` in
   interactive mode or `--auto` to skip.
 - **Safety.** Retrieved paper/web text is treated as untrusted data. Research agents have no
@@ -136,7 +142,9 @@ intake → scope →[HITL]→ outline →[HITL]→ plan_research
 ## Presets
 
 `config/presets/*.yaml` control length targets, section budgets, research budgets and revision
-rounds: `article-short` (≈1.5k–3k words), `article-long` (≈4k–8k), `mini-book` (≈12k–25k).
+rounds: `article-short` (≈2.5k–4k words), `article-long` (≈6k–10k), `mini-book` (≈15k–30k). For
+more depth, raise `words_per_subsection` / `max_subsections_per_section` and let the scoper narrow
+the question accordingly.
 
 ## Troubleshooting
 
