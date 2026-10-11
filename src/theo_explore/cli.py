@@ -15,6 +15,7 @@ from rich.panel import Panel
 from theo_explore.config import Settings, get_settings, load_preset, repo_root
 from theo_explore.io.artifacts import new_project_id, open_workspace, resolve_workspace_root
 from theo_explore.io.export import detect_tools, export_document
+from theo_explore.progress import ProgressReporter, stream_graph
 from theo_explore.runtime import (
     Project,
     make_initial_state,
@@ -50,14 +51,19 @@ def _load_env() -> None:
         pass
 
 
-async def _drive_interactive(project: Project, first_payload: Any) -> None:
-    snapshot = await project.invoke(first_payload)
+async def _drive_interactive(
+    project: Project, first_payload: Any, reporter: ProgressReporter
+) -> Any:
+    snapshot = await stream_graph(project.graph, project.config, first_payload, reporter)
     while True:
         review = pending_interrupt(snapshot)
         if review is None:
             break
         decision = _collect_decision(review)
-        snapshot = await project.invoke(Command(resume=decision))
+        snapshot = await stream_graph(
+            project.graph, project.config, Command(resume=decision), reporter
+        )
+    return snapshot
 
 
 def _collect_decision(review: dict[str, Any]) -> dict[str, Any]:
@@ -83,16 +89,37 @@ def _collect_decision(review: dict[str, Any]) -> dict[str, Any]:
     return {key: edited}
 
 
+def _make_reporter(
+    project: Project,
+    workspace: Any,
+    *,
+    topic: str,
+    doc_type: str,
+    preset: str,
+    quiet: bool,
+) -> ProgressReporter:
+    reporter = ProgressReporter(console, enabled=not quiet)
+    reporter.banner(
+        topic=topic or "(unknown)",
+        doc_type=doc_type or "?",
+        preset=preset or "?",
+        project_dir=str(workspace.dir),
+        strong_model=project.deps.llm.node_config("scope").model,
+        cheap_model=project.deps.llm.node_config("research").model,
+    )
+    return reporter
+
+
 async def _run_project(
     project: Project,
     initial_state: dict[str, Any],
     *,
     auto: bool,
-) -> None:
+    reporter: ProgressReporter,
+) -> Any:
     if auto:
-        await project.invoke(initial_state)
-    else:
-        await _drive_interactive(project, initial_state)
+        return await stream_graph(project.graph, project.config, initial_state, reporter)
+    return await _drive_interactive(project, initial_state, reporter)
 
 
 @app.command()
@@ -107,10 +134,11 @@ def run(
     max_concurrency: int = typer.Option(4, "--max-concurrency"),
     fake_llm: bool = typer.Option(False, "--fake-llm", help="Deterministic offline backend."),
     export: bool = typer.Option(True, "--export/--no-export", help="Render PDF/DOCX via Pandoc."),
-    formats: str = typer.Option("pdf,docx", "--formats"),
+    formats: str = typer.Option(",".join(DEFAULT_FORMATS), "--formats"),
     max_cost: float | None = typer.Option(None, "--max-cost", help="Abort budget in USD."),
     project_id: str | None = typer.Option(None, "--project-id"),
     workspace: str | None = typer.Option(None, "--workspace"),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress live progress output."),
 ) -> None:
     """Start a new exploration."""
     _load_env()
@@ -138,30 +166,46 @@ def run(
             ),
             fake=fake_llm,
             auto=auto,
+            quiet=quiet,
         )
     )
 
 
 async def _run(
-    settings: Settings, project_id: str, state: dict[str, Any], *, fake: bool, auto: bool
+    settings: Settings,
+    project_id: str,
+    state: dict[str, Any],
+    *,
+    fake: bool,
+    auto: bool,
+    quiet: bool,
 ) -> None:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     root = resolve_workspace_root(settings.workspace_root)
     workspace = open_workspace(root, project_id)
-    console.print(f"[bold]Project:[/bold] {workspace.dir}")
     tool_status = detect_tools()
-    console.print(f"[dim]{tool_status.describe()}[/dim]")
     async with AsyncSqliteSaver.from_conn_string(str(workspace.checkpoint_path)) as saver:
         project = open_project(
             project_id, settings=settings, fake=fake, checkpointer=saver
         )
+        reporter = _make_reporter(
+            project,
+            workspace,
+            topic=state.get("topic", ""),
+            doc_type=state.get("doc_type", ""),
+            preset=state.get("preset", ""),
+            quiet=quiet,
+        )
+        if not quiet:
+            console.print(f"[dim]{tool_status.describe()}[/dim]")
         try:
-            await _run_project(project, state, auto=auto)
+            snapshot = await _run_project(project, state, auto=auto, reporter=reporter)
         finally:
             await project.deps.tools.aclose()
             if project.deps.logger is not None:
                 project.deps.logger.close()
+    reporter.finished(snapshot.values)
     _print_summary(workspace.project_id, settings)
 
 
@@ -171,35 +215,52 @@ def resume(
     fake_llm: bool = typer.Option(False, "--fake-llm"),
     workspace: str | None = typer.Option(None, "--workspace"),
     auto: bool = typer.Option(True, "--auto/--interactive"),
+    quiet: bool = typer.Option(False, "--quiet", help="Suppress live progress output."),
 ) -> None:
     """Resume a paused or crashed project (thread_id = project_id)."""
     _load_env()
     settings = _settings(None, workspace)
-    asyncio.run(_resume(settings, project_id, fake=fake_llm, auto=auto))
+    asyncio.run(_resume(settings, project_id, fake=fake_llm, auto=auto, quiet=quiet))
 
 
-async def _resume(settings: Settings, project_id: str, *, fake: bool, auto: bool) -> None:
+async def _resume(
+    settings: Settings, project_id: str, *, fake: bool, auto: bool, quiet: bool
+) -> None:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     root = resolve_workspace_root(settings.workspace_root)
     workspace = open_workspace(root, project_id)
+    brief = workspace.load_brief()
     async with AsyncSqliteSaver.from_conn_string(str(workspace.checkpoint_path)) as saver:
         project = open_project(project_id, settings=settings, fake=fake, checkpointer=saver)
+        reporter = _make_reporter(
+            project,
+            workspace,
+            topic=(brief.topic if brief else project_id),
+            doc_type=(brief.doc_type if brief else ""),
+            preset=(brief.preset if brief else ""),
+            quiet=quiet,
+        )
         try:
             snapshot = await project.snapshot()
             review = pending_interrupt(snapshot)
             if review is not None:
                 decision = {"approve": True} if auto else _collect_decision(review)
-                snapshot = await project.invoke(Command(resume=decision))
+                snapshot = await stream_graph(
+                    project.graph, project.config, Command(resume=decision), reporter
+                )
             else:
-                snapshot = await project.invoke(None)
+                snapshot = await stream_graph(project.graph, project.config, None, reporter)
             while (review := pending_interrupt(snapshot)) is not None:
                 decision = {"approve": True} if auto else _collect_decision(review)
-                snapshot = await project.invoke(Command(resume=decision))
+                snapshot = await stream_graph(
+                    project.graph, project.config, Command(resume=decision), reporter
+                )
         finally:
             await project.deps.tools.aclose()
             if project.deps.logger is not None:
                 project.deps.logger.close()
+    reporter.finished(snapshot.values)
     _print_summary(project_id, settings)
 
 
@@ -217,7 +278,7 @@ def status(
 @app.command()
 def export(
     project_id: str = typer.Argument(...),
-    formats: str = typer.Option("pdf,docx", "--formats"),
+    formats: str = typer.Option(",".join(DEFAULT_FORMATS), "--formats"),
     workspace: str | None = typer.Option(None, "--workspace"),
 ) -> None:
     """Re-export an existing project's Markdown to PDF/DOCX."""
