@@ -37,7 +37,11 @@ nodes:
   outline:
     model: strong
     temperature: 0.4
-    max_tokens: 8000
+    # A comprehensive mini-book outline is a large nested JSON object (sections ->
+    # subsections -> children, each with key_questions). It can exceed 13k output
+    # tokens; at 8000 the response was truncated (finish_reason=length) and never
+    # parsed. 24000 leaves headroom while still bounded.
+    max_tokens: 24000
   plan_research:
     model: strong
     temperature: 0.2
