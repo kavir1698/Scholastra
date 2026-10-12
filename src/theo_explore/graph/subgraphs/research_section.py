@@ -88,7 +88,7 @@ def _wall_clock_expired(state: ResearchState, brief: ResearchBrief) -> bool:
     return (time.time() - float(started)) >= brief.wall_clock_seconds
 
 
-def _summarize_observation(result: Any, *, limit: int = 1200) -> str:
+def _summarize_observation(result: Any, *, limit: int = 6000) -> str:
     text: str
     if isinstance(result, str):
         text = result
@@ -120,7 +120,7 @@ def build_research_subgraph(deps: Deps):
             max_tool_calls=brief.max_tool_calls,
             tool_names=[t.name for t in tools],
             tool_signatures=[_tool_signature(t) for t in tools],
-            observations="\n".join(state.get("observations", []))[:4000],
+            observations="\n".join(state.get("observations", []))[:8000],
         )
         try:
             plan, usage = await deps.llm.structured(
@@ -206,7 +206,7 @@ def build_research_subgraph(deps: Deps):
             section_title=state.get("section_title", state["section_id"]),
             section_purpose=state.get("section_purpose", ""),
             catalog=catalog_lines({sid: _source_view(s) for sid, s in sources.items()}),
-            observations="\n".join(state.get("observations", []))[:8000],
+            observations="\n".join(state.get("observations", []))[:20000],
             contract=contract_block,
         )
         try:

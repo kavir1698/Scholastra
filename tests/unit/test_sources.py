@@ -10,6 +10,7 @@ from theo_explore.sources.registry import (
     normalize_url,
     register_sources,
     source_from_text_result,
+    url_from_arguments,
 )
 
 
@@ -82,6 +83,90 @@ def test_source_from_text_result_applies_policy_tier():
         "fetch", {"url": "https://en.wikipedia.org/wiki/Free_will"}, "# Free will\n\nText.", {}
     )
     assert source is not None and source.tier == 4  # orientation-only domain
+
+
+# --- Exa/Tavily plain-text result formats ---------------------------------
+# These MCP search servers return human-readable blocks, not JSON. Without a
+# text parser every hit is discarded and the section ends up with no evidence.
+
+_EXA_TEXT = (
+    "Title: Compatibilism (Stanford Encyclopedia of Philosophy)\n"
+    "URL: https://plato.stanford.edu/entries/compatibilism/\n"
+    "Published: 2004-04-26T02:29:23.000Z\n"
+    "Author: McKenna, Michael, Coates, D. Justin\n"
+    "Highlights:\n"
+    "Compatibilism is the thesis that free will is compatible with determinism.\n"
+    "\n"
+    "---\n"
+    "\n"
+    "Title: Arguments for Incompatibilism\n"
+    "URL: https://plato.stanford.edu/entries/incompatibilism-arguments/\n"
+    "Published: N/A\n"
+    "Author: N/A\n"
+    "Highlights:\n"
+    "Incompatibilism is the thesis that no deterministic world is a free will world.\n"
+)
+
+_TAVILY_TEXT = (
+    "Detailed Results:\n\n"
+    "Title: Libertarianism about Free Will\n"
+    "ID: 7f5e23-00\n"
+    "URL: https://philpapers.org/browse/libertarianism-about-free-will\n"
+    "Content: The fundamental intuition of incompatibilism is that the future is not "
+    "predetermined.\n\n"
+    "Title: Compatibilism and Incompatibilism\n"
+    "ID: 0340ff-02\n"
+    "URL: https://example.edu/free-will\n"
+    "Content: Incompatibilism is the view that actions cannot be free if determinism is true.\n"
+)
+
+
+def test_normalize_tool_result_exa_formatted_text():
+    sources = normalize_tool_result("exa_web_search_exa", [{"type": "text", "text": _EXA_TEXT}])
+    by_id = {s.id: s for s in sources}
+    assert set(by_id) == {
+        "url:https://plato.stanford.edu/entries/compatibilism",
+        "url:https://plato.stanford.edu/entries/incompatibilism-arguments",
+    }
+    first = by_id["url:https://plato.stanford.edu/entries/compatibilism"]
+    assert first.title == "Compatibilism (Stanford Encyclopedia of Philosophy)"
+    assert first.year == 2004
+    assert first.authors == ["Michael McKenna", "D. Justin Coates"]
+    assert by_id["url:https://plato.stanford.edu/entries/incompatibilism-arguments"].year is None
+    assert by_id["url:https://plato.stanford.edu/entries/incompatibilism-arguments"].authors == []
+
+
+def test_formatted_parser_requires_url():
+    # A stray ``Title:`` line in fetched full text must not mint a title-only Source.
+    text = "Title: Stray heading in fetched page\nbody line\n"
+    assert normalize_tool_result("fetch_fetch", [{"type": "text", "text": text}]) == []
+
+
+def test_normalize_tool_result_tavily_formatted_text():
+    sources = normalize_tool_result("tavily_tavily_search", [{"type": "text", "text": _TAVILY_TEXT}])
+    ids = {s.id for s in sources}
+    assert ids == {
+        "url:https://philpapers.org/browse/libertarianism-about-free-will",
+        "url:https://example.edu/free-will",
+    }
+
+
+def test_url_from_arguments_handles_urls_list():
+    assert url_from_arguments({"urls": ["https://a.com/x", "https://b.com/y"]}) == "https://a.com/x"
+    assert url_from_arguments({"url": "https://a.com/x"}) == "https://a.com/x"
+    assert url_from_arguments({"query": "no url here"}) is None
+
+
+def test_source_from_text_result_mints_markitdown_pdf():
+    """markitdown takes a ``uri`` and returns page text; that text must become a
+    citable Source so PDF full text can back claims."""
+    markdown = "Learning Tractable Probabilistic Models\n\nAbstract\nMoral responsibility..."
+    source = source_from_text_result(
+        "markitdown_convert_to_markdown", {"uri": "https://arxiv.org/pdf/1810.03736v3"}, markdown
+    )
+    assert source is not None
+    assert source.id == "url:https://arxiv.org/pdf/1810.03736v3"
+    assert source.full_text_available is True
 
 
 

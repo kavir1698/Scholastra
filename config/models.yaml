@@ -60,7 +60,7 @@ nodes:
   research:
     model: cheap
     temperature: 0.2
-    max_tokens: 3000
+    max_tokens: 8000
   draft:
     model: strong
     temperature: 0.6

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, get_args
 from urllib.parse import urlsplit, urlunsplit
@@ -238,6 +239,102 @@ def _parse_result_text(text: str) -> object | None:
         return None
 
 
+# The Exa and Tavily MCP search servers return human-readable blocks rather than
+# JSON, one per hit:
+#   Title: ...\nURL: https://...\nPublished: 2000-08-17...\nAuthor: ...\nHighlights:\n<text>
+#   Title: ...\nID: ...\nURL: ...\nContent: <text>
+# Records are separated by a blank line and/or a ``---`` rule.
+_FORMATTED_FIELD_RE = re.compile(
+    r"^(Title|URL|Published|Author|Authors|ID|Highlights|Content):\s?(.*)$"
+)
+
+
+def _parse_formatted_records(text: str) -> list[dict[str, Any]]:
+    """Parse the plain-text result format used by Exa/Tavily search tools.
+
+    Falls back on nothing else: without this, every Exa/Tavily hit is discarded
+    (their text is not JSON), leaving the section with an empty source catalog
+    and therefore no citable evidence. Returns one payload per hit for
+    :func:`_coerce_source`; only blocks carrying a ``Title:`` start a record.
+    """
+    records: list[dict[str, Any]] = []
+    current: dict[str, str] = {}
+    field: str | None = None
+
+    def flush() -> None:
+        nonlocal field
+        title = (current.get("title") or "").strip()
+        url = (current.get("url") or "").strip()
+        # Require a URL so a stray ``Title:`` line inside fetched full text cannot
+        # mint a junk title-only Source (which would also suppress the URL-based
+        # full-text Source). Every real Exa/Tavily search hit carries ``URL:``.
+        if title and url:
+            records.append(_formatted_payload(current))
+        current.clear()
+        field = None
+
+    for raw_line in (text or "").splitlines():
+        line = raw_line.rstrip()
+        match = _FORMATTED_FIELD_RE.match(line)
+        if match:
+            key = match.group(1).lower()
+            if key == "title" and current.get("title"):
+                flush()
+            field = key
+            current[key] = match.group(2).strip()
+            continue
+        if field and line.strip():
+            current[field] = f"{current.get(field, '')}\n{line}".strip()
+    flush()
+    return records
+
+
+def _split_formatted_authors(raw: str) -> list[str]:
+    """Normalise the author string of a formatted search hit to "Given Family".
+
+    Exa emits ``Author: McKenna, Michael, Coates, D. Justin`` (comma-separated
+    ``Family, Given`` pairs); Tavily omits authors. Semicolons are accepted as a
+    plain separator. Names are reordered so ``_source_lookup``'s
+    ``authors[0].split()[-1]`` family derivation and reference rendering are
+    correct.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    if ";" in raw:
+        return [part.strip() for part in raw.split(";") if part.strip()]
+    if "," in raw:
+        parts = [part.strip() for part in raw.split(",") if part.strip()]
+        authors: list[str] = []
+        for index in range(0, len(parts), 2):
+            family = parts[index]
+            given = parts[index + 1] if index + 1 < len(parts) else ""
+            authors.append(f"{given} {family}".strip())
+        return authors
+    return [raw]
+
+
+def _formatted_payload(record: Mapping[str, str]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    title = (record.get("title") or "").strip()
+    url = (record.get("url") or "").strip()
+    if title:
+        payload["title"] = title
+    if url:
+        payload["url"] = url
+    published = record.get("published")
+    if published:
+        year = re.search(r"\d{4}", published)
+        if year:
+            payload["year"] = int(year.group(0))
+    author = record.get("author") or record.get("authors")
+    if author and author.strip().lower() not in {"n/a", "none", "unknown"}:
+        authors = _split_formatted_authors(author)
+        if authors:
+            payload["authors"] = authors
+    return payload
+
+
 def _extract_texts(result: object) -> list[str]:
     """Pull text out of a string or a list of MCP content blocks."""
     if isinstance(result, str):
@@ -272,6 +369,8 @@ def normalize_tool_result(
             parsed = _parse_result_text(text)
             if parsed is not None:
                 payloads.extend(_payloads_from_obj(parsed))
+            else:
+                payloads.extend(_parse_formatted_records(text))
     else:
         payloads = list(_payloads_from_obj(result))
 
@@ -287,7 +386,7 @@ def normalize_tool_result(
     return sources
 
 
-_URL_ARG_KEYS = ("url", "uri", "link", "href")
+_URL_ARG_KEYS = ("url", "urls", "uri", "link", "href")
 
 
 def _host_of(url: str) -> str:
@@ -299,14 +398,24 @@ def _host_of(url: str) -> str:
 
 
 def url_from_arguments(arguments: Mapping[str, Any] | None) -> str | None:
-    """Return the first HTTP(S) URL found among a tool call's arguments."""
+    """Return the first HTTP(S) URL found among a tool call's arguments.
+
+    Handles a bare ``url``/``uri`` string as well as the ``urls: [...]`` list
+    shape used by the Exa/Tavily fetch/extract tools, so their page text can be
+    minted into a citable :class:`Source` instead of being discarded.
+    """
     if not arguments:
         return None
     ordered = [arguments.get(key) for key in _URL_ARG_KEYS if key in arguments]
     ordered += [value for key, value in arguments.items() if key not in _URL_ARG_KEYS]
     for value in ordered:
-        if isinstance(value, str) and value.strip().lower().startswith(("http://", "https://")):
-            return value.strip()
+        candidate: str | None = None
+        if isinstance(value, str):
+            candidate = value
+        elif isinstance(value, (list, tuple)):
+            candidate = next((item for item in value if isinstance(item, str)), None)
+        if candidate and candidate.strip().lower().startswith(("http://", "https://")):
+            return candidate.strip()
     return None
 
 
