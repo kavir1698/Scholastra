@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from langgraph.types import Send
@@ -114,6 +115,7 @@ def make_dispatch_research(deps: Deps):
             return "research_join"
         outline = Outline.model_validate(state["outline"])
         sends: list[Send] = []
+        started_at = time.time()
         for section in outline.sections:
             if section.target_words <= 0:
                 continue
@@ -127,6 +129,7 @@ def make_dispatch_research(deps: Deps):
                         "section_purpose": section.purpose,
                         "brief": state["research_plan"].get(section.id, {}),
                         "contract": state.get("contract") or {},
+                        "started_at": started_at,
                     },
                 )
             )
@@ -139,6 +142,10 @@ def make_research_join_node(deps: Deps):
     async def research_join(state: dict[str, Any]) -> dict[str, Any]:
         sources = {sid: Source.model_validate(s) for sid, s in (state.get("sources") or {}).items()}
         deps.workspace(state["project_id"]).save_sources(sources)
+        failed = getattr(deps.tools, "failed_servers", None)
+        if failed:
+            # A dead MCP server silently removes evidence; make it visible.
+            deps.log("mcp_servers_failed", servers=list(failed))
         deps.log("research_join", sources=len(sources), sections=len(state.get("evidence") or {}))
         return {"status": "draft"}
 

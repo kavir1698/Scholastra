@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
-from typing import get_args
+from collections.abc import Iterable, Mapping
+from typing import Any, get_args
 from urllib.parse import urlsplit, urlunsplit
 
-from theo_explore.models.schemas import AccessMode, Source, SourceRole
+from theo_explore.models.schemas import AccessMode, Source, SourceKind, SourceRole
 from theo_explore.utils import stable_id
 
 _VALID_ROLES = set(get_args(SourceRole))
@@ -107,6 +107,12 @@ def _doi_from_url(url: str | None) -> str | None:
 
 def _coerce_source(data: dict) -> Source | None:
     title = data.get("title") or data.get("name") or data.get("display_name")
+    url = data.get("url") or data.get("link") or data.get("href")
+    if not title:
+        # Web/search results frequently identify a record by URL or DOI alone.
+        # Fall back to those so the record still becomes a usable Source instead
+        # of being dropped for lacking a title.
+        title = url or data.get("doi") or data.get("DOI")
     if not title:
         return None
     authors = _coerce_authors(data.get("authors") or data.get("author") or data.get("authorships"))
@@ -122,7 +128,6 @@ def _coerce_source(data: dict) -> Source | None:
         year = int(year) if year is not None else None
     except (TypeError, ValueError):
         year = None
-    url = data.get("url") or data.get("link") or data.get("href")
     doi = data.get("doi") or data.get("DOI")
     doi = (_doi_from_url(str(doi)) or str(doi)) if doi else _doi_from_url(url)
     arxiv_id = data.get("arxiv_id") or data.get("arxiv")
@@ -190,12 +195,30 @@ def _coerce_source(data: dict) -> Source | None:
     )
 
 
+# A dict is treated as a *record* (rather than a wrapper to descend into) when it
+# carries any of these; otherwise its wrapper keys are traversed.
+_RECORD_KEYS = ("title", "name", "display_name", "url", "link", "href", "doi")
+_WRAPPER_KEYS = (
+    "results",
+    "items",
+    "entries",
+    "data",
+    "papers",
+    "sources",
+    "documents",
+    "hits",
+    "records",
+    "web",
+    "organic",
+)
+
+
 def _payloads_from_obj(obj: object) -> Iterable[object]:
     if isinstance(obj, dict):
-        if "title" in obj or "name" in obj or "display_name" in obj:
+        if any(key in obj for key in _RECORD_KEYS):
             yield obj
             return
-        for key in ("results", "items", "entries", "data", "papers", "sources"):
+        for key in _WRAPPER_KEYS:
             nested = obj.get(key)
             if isinstance(nested, (list, dict)):
                 yield from _payloads_from_obj(nested)
@@ -262,6 +285,87 @@ def normalize_tool_result(
             if source is not None:
                 sources.append(apply_source_policy(source, policy) if policy else source)
     return sources
+
+
+_URL_ARG_KEYS = ("url", "uri", "link", "href")
+
+
+def _host_of(url: str) -> str:
+    try:
+        parts = urlsplit(url if "://" in url else f"https://{url}")
+    except ValueError:
+        return ""
+    return parts.netloc.lower().removeprefix("www.")
+
+
+def url_from_arguments(arguments: Mapping[str, Any] | None) -> str | None:
+    """Return the first HTTP(S) URL found among a tool call's arguments."""
+    if not arguments:
+        return None
+    ordered = [arguments.get(key) for key in _URL_ARG_KEYS if key in arguments]
+    ordered += [value for key, value in arguments.items() if key not in _URL_ARG_KEYS]
+    for value in ordered:
+        if isinstance(value, str) and value.strip().lower().startswith(("http://", "https://")):
+            return value.strip()
+    return None
+
+
+def title_from_markdown(text: str, *, max_len: int = 200) -> str | None:
+    """Best-effort title from fetched Markdown: first ATX heading, else first line."""
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip()[:max_len] or None
+        return stripped[:max_len]
+    return None
+
+
+def _kind_from_url(url: str) -> SourceKind:
+    host = _host_of(url)
+    if "arxiv.org" in host:
+        return "preprint"
+    if "doi.org" in host or "/doi/" in url.lower():
+        return "paper"
+    return "web"
+
+
+def source_from_text_result(
+    tool_name: str,
+    arguments: Mapping[str, Any] | None,
+    result: object,
+    policy: dict | None = None,
+) -> Source | None:
+    """Mint a :class:`Source` for a tool that returned page text rather than records.
+
+    Search/registry tools return structured records handled by
+    :func:`normalize_tool_result`; fetch/convert tools (``fetch``, ``markitdown``,
+    the native fetch fallback) return Markdown or plain text for a single URL.
+    Those results carry no bibliographic record, so without this a page read at
+    full text can never back a citation and every claim drawn from it is later
+    dropped as an unknown cite. The URL is taken from the tool arguments (the only
+    reliable place), the title from the fetched text, and provenance metadata is
+    applied from the source policy so tiers/roles are correct.
+    """
+    texts = [t for t in _extract_texts(result) if t and t.strip()]
+    text = "\n".join(texts).strip()
+    url = url_from_arguments(arguments)
+    if not url or not text:
+        return None
+    source = Source(
+        id=make_source_id(url=url),
+        kind=_kind_from_url(url),
+        title=title_from_markdown(text) or url,
+        url=url,
+        retrieved_url=url,
+        full_text_available=True,
+    )
+    if policy is None:
+        return source
+    from theo_explore.sources.policy import apply_source_policy
+
+    return apply_source_policy(source, policy)
 
 
 def register_sources(existing: dict[str, Source], new: Iterable[Source]) -> dict[str, Source]:

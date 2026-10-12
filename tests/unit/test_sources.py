@@ -9,6 +9,7 @@ from theo_explore.sources.registry import (
     normalize_tool_result,
     normalize_url,
     register_sources,
+    source_from_text_result,
 )
 
 
@@ -41,6 +42,47 @@ def test_normalize_tool_result_plain_list_of_dicts():
 
 def test_normalize_tool_result_unparseable_returns_empty():
     assert normalize_tool_result("t", "not json") == []
+
+
+def test_normalize_tool_result_url_only_record():
+    # Web/search results may identify a record by URL alone; it must not be dropped.
+    sources = normalize_tool_result("t", [{"url": "https://example.com/a/"}])
+    assert len(sources) == 1
+    assert sources[0].id == "url:https://example.com/a"
+    assert sources[0].title == "https://example.com/a/"
+
+
+def test_normalize_tool_result_nested_wrapper_key():
+    result = '{"web": {"results": [{"title": "Nested", "url": "https://a.com/x"}]}}'
+    sources = normalize_tool_result("t", result)
+    assert [s.id for s in sources] == ["url:https://a.com/x"]
+
+
+def test_source_from_text_result_mints_fetch_source():
+    markdown = "# Are We Free to Break the Laws?\n\nSome body text about the topic."
+    source = source_from_text_result("fetch", {"url": "https://plato.stanford.edu/x"}, markdown)
+    assert source is not None
+    assert source.id == "url:https://plato.stanford.edu/x"
+    assert source.title == "Are We Free to Break the Laws?"
+    assert source.full_text_available is True
+
+
+def test_source_from_text_result_requires_url_and_text():
+    assert source_from_text_result("fetch", {"query": "no url"}, "# Title") is None
+    assert source_from_text_result("fetch", {"url": "https://a.com"}, "") is None
+
+
+def test_source_from_text_result_does_not_mint_for_search_tool():
+    # A search tool with no URL argument (records failed to parse) must not mint.
+    assert source_from_text_result("exa_web_search_exa", {"query": "free will"}, "[]") is None
+
+
+def test_source_from_text_result_applies_policy_tier():
+    source = source_from_text_result(
+        "fetch", {"url": "https://en.wikipedia.org/wiki/Free_will"}, "# Free will\n\nText.", {}
+    )
+    assert source is not None and source.tier == 4  # orientation-only domain
+
 
 
 def test_register_sources_merges_by_id():

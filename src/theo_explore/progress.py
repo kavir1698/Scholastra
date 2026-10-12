@@ -85,6 +85,10 @@ class ProgressReporter:
             return
         self._phases_seen.add(phase_key)
         self._phase_index += 1
+        # Reset the delta baseline at a phase boundary so the first branch line of
+        # a phase does not absorb all elapsed time up to here (e.g. the wall-clock
+        # spent paused for human scope/outline review).
+        self._last = time.monotonic()
         suffix = f"  [dim]{detail}[/dim]" if detail else ""
         self._line(f"[bold cyan][{self._phase_index}][/bold cyan] [bold]{label}[/bold]{suffix}")
 

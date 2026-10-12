@@ -18,6 +18,7 @@ from theo_explore.sources.registry import (
     normalize_url,
     register_sources,
     sanitize_id,
+    source_from_text_result,
 )
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     "register_sources",
     "render_reference_list",
     "sanitize_id",
+    "source_from_text_result",
     "source_to_csl_json",
 ]

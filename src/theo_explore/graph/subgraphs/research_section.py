@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import time
 from typing import Annotated, Any
 
 from langgraph.graph import END, START, StateGraph
@@ -28,7 +30,12 @@ from theo_explore.models.schemas import (
     ToolPlan,
 )
 from theo_explore.sources.policy import policy_lines
-from theo_explore.sources.registry import catalog_lines, normalize_tool_result, normalize_url
+from theo_explore.sources.registry import (
+    catalog_lines,
+    normalize_tool_result,
+    normalize_url,
+    source_from_text_result,
+)
 
 
 class ResearchState(TypedDict, total=False):
@@ -42,6 +49,7 @@ class ResearchState(TypedDict, total=False):
     next_plan: dict[str, Any]
     tool_calls_used: int
     steps: int
+    started_at: float
     sources: Annotated[dict[str, dict[str, Any]], merge_by_key]
     evidence: Annotated[dict[str, dict[str, Any]], merge_by_key]
     budget: Annotated[dict[str, Any], merge_budget]
@@ -70,6 +78,14 @@ def _fallback_plan(state: ResearchState, tools: list[Any], brief: ResearchBrief)
         if query
     ]
     return ToolPlan(tool_calls=calls, done=not calls, reasoning="deterministic fallback")
+
+
+def _wall_clock_expired(state: ResearchState, brief: ResearchBrief) -> bool:
+    """Whether the section's per-brief wall clock has elapsed."""
+    started = state.get("started_at")
+    if not started or not brief.wall_clock_seconds:
+        return False
+    return (time.time() - float(started)) >= brief.wall_clock_seconds
 
 
 def _summarize_observation(result: Any, *, limit: int = 1200) -> str:
@@ -134,6 +150,8 @@ def build_research_subgraph(deps: Deps):
         observations: list[str] = []
         new_sources: dict[str, dict[str, Any]] = {}
         executed = 0
+        called_tools: list[str] = []
+        minted = 0
         for call in plan.tool_calls[:remaining]:
             tool = tools.get(call.tool)
             if tool is None:
@@ -144,7 +162,18 @@ def build_research_subgraph(deps: Deps):
                 deps.log("tool_error", section=state["section_id"], tool=call.tool, error=str(exc))
                 continue
             executed += 1
-            for source in normalize_tool_result(call.tool, result, policy=source_policy):
+            called_tools.append(call.tool)
+            produced = normalize_tool_result(call.tool, result, policy=source_policy)
+            if not produced:
+                # Fetch/convert tools return page text rather than records; mint a
+                # Source from the URL so the evidence can actually be cited.
+                text_source = source_from_text_result(
+                    call.tool, call.arguments, result, policy=source_policy
+                )
+                if text_source is not None:
+                    produced = [text_source]
+                    minted += 1
+            for source in produced:
                 new_sources[source.id] = source.model_dump()
             observations.append(
                 f"[{call.tool}({call.arguments})] {_summarize_observation(result)}"
@@ -154,6 +183,8 @@ def build_research_subgraph(deps: Deps):
             section=state["section_id"],
             calls=executed,
             sources=len(new_sources),
+            tools=called_tools,
+            minted=minted,
         )
         return {
             "observations": observations,
@@ -209,6 +240,13 @@ def build_research_subgraph(deps: Deps):
         brief = ResearchBrief.model_validate(
             state.get("brief") or {"section_id": state["section_id"]}
         )
+        if _wall_clock_expired(state, brief):
+            deps.log(
+                "research_wall_clock",
+                section=state["section_id"],
+                elapsed=round(time.time() - float(state["started_at"]), 1),
+            )
+            return "extract"
         plan = state.get("next_plan") or {}
         if plan.get("done") or not plan.get("tool_calls"):
             return "extract"
@@ -237,34 +275,142 @@ def _source_view(data: dict[str, Any]):
     return Source.model_validate(data)
 
 
+_SLUG_SPLIT_RE = re.compile(r"[^a-z0-9]+")
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "of",
+        "and",
+        "or",
+        "in",
+        "on",
+        "to",
+        "for",
+        "with",
+        "is",
+        "are",
+        "be",
+        "by",
+        "at",
+        "as",
+        "from",
+        "into",
+        "that",
+        "this",
+        "its",
+    }
+)
+
+
+def _slugify(text: str) -> str:
+    return _SLUG_SPLIT_RE.sub("-", (text or "").strip().lower()).strip("-")
+
+
+def _significant_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in _SLUG_SPLIT_RE.split((text or "").lower())
+        if len(token) > 1 and token not in _STOPWORDS
+    }
+
+
 def _source_lookup(sources: dict[str, Any]) -> dict[str, str]:
+    """Lenient key -> SourceId index.
+
+    Indexes each source by its id, URL (raw and normalised), title and title slug,
+    DOI, arXiv id and a possible author-year bibkey, so an extractor that cites a
+    source by any of those resolves instead of being dropped as unknown.
+    """
     lookup: dict[str, str] = {}
+
+    def index(key: Any, sid: str) -> None:
+        if key:
+            lookup.setdefault(str(key).strip().lower(), sid)
+
     for sid, data in sources.items():
         data = data or {}
         lookup[sid] = sid
         lookup[sid.lower()] = sid
+        index(_slugify(sid), sid)
         url = data.get("url")
         if url:
             norm = normalize_url(str(url))
             for key in (str(url), str(url).rstrip("/"), norm, f"url:{norm}"):
-                lookup.setdefault(key.lower(), sid)
-        title = str(data.get("title") or "").strip().lower()
+                index(key, sid)
+        title = str(data.get("title") or "").strip()
         if title:
-            lookup.setdefault(title, sid)
+            index(title, sid)
+            index(_slugify(title), sid)
+        doi = data.get("doi")
+        if doi:
+            index(str(doi), sid)
+            index(f"doi:{str(doi).lower()}", sid)
+        arxiv_id = data.get("arxiv_id")
+        if arxiv_id:
+            index(str(arxiv_id), sid)
+            index(f"arxiv:{arxiv_id}", sid)
+        authors = data.get("authors") or []
+        year = data.get("year")
+        if authors and year:
+            first = str(authors[0]).split()
+            if first:
+                family = first[-1]
+                index(f"{family}{year}", sid)
+                index(f"{family} {year}", sid)
+                if len(authors) > 1:
+                    index(f"{family} et al {year}", sid)
     return lookup
 
 
-def _resolve_citation(key: str, lookup: dict[str, str]) -> str | None:
+def _fuzzy_resolve(raw: str, sources: dict[str, Any]) -> str | None:
+    """Conservative title-token fallback for a cite key that is not an exact id.
+
+    Binds only when the key shares at least two significant tokens with a source
+    title and either the key's tokens are a subset of the title's or the Jaccard
+    overlap is at least 0.6 — otherwise the claim keeps being dropped rather than
+    bound to the wrong source.
+    """
+    key_tokens = _significant_tokens(raw)
+    if len(key_tokens) < 2:
+        return None
+    best: str | None = None
+    best_score = 0.0
+    for sid, data in (sources or {}).items():
+        title_tokens = _significant_tokens(str((data or {}).get("title") or ""))
+        if len(title_tokens) < 2:
+            continue
+        overlap = key_tokens & title_tokens
+        if len(overlap) < 2:
+            continue
+        score = len(overlap) / len(key_tokens | title_tokens)
+        if key_tokens <= title_tokens:
+            score = max(score, 0.75)
+        if score > best_score:
+            best_score, best = score, sid
+    if best is not None and best_score >= 0.6:
+        return best
+    return None
+
+
+def _resolve_citation(key: str, lookup: dict[str, str], sources: dict[str, Any]) -> str | None:
     raw = key.strip().lstrip("@")
-    candidates = [raw, raw.lower()]
+    if not raw:
+        return None
+    candidates = [raw, raw.lower(), _slugify(raw)]
     if "://" in raw:
         candidates.append(f"url:{normalize_url(raw)}")
     else:
         candidates.append(f"url:{normalize_url('https://' + raw)}")
     for candidate in candidates:
-        if candidate and candidate in lookup:
+        if not candidate:
+            continue
+        if candidate in lookup:
             return lookup[candidate]
-    return None
+        if candidate.lower() in lookup:
+            return lookup[candidate.lower()]
+    return _fuzzy_resolve(raw, sources)
 
 
 def _origin_for(sid: str, sources: dict[str, Any]) -> str:
@@ -291,7 +437,7 @@ def _bind_claims(evidence: SectionEvidence, sources: dict[str, Any], log: Any = 
     for claim in evidence.claims:
         valid: list[str] = []
         for raw in claim.source_ids:
-            resolved = _resolve_citation(str(raw), lookup)
+            resolved = _resolve_citation(str(raw), lookup, sources)
             if resolved and resolved not in valid:
                 valid.append(resolved)
             elif not resolved:
@@ -311,5 +457,6 @@ def _bind_claims(evidence: SectionEvidence, sources: dict[str, Any], log: Any = 
             section=evidence.section_id,
             count=len(dropped),
             sample=dropped[:5],
+            sources=len(sources),
         )
     return bound
