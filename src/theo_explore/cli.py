@@ -12,7 +12,13 @@ from langgraph.types import Command
 from rich.console import Console
 from rich.panel import Panel
 
-from theo_explore.config import Settings, get_settings, load_preset, repo_root
+from theo_explore.config import (
+    Settings,
+    get_settings,
+    list_presets,
+    load_preset,
+    repo_root,
+)
 from theo_explore.io.artifacts import new_project_id, open_workspace, resolve_workspace_root
 from theo_explore.io.export import detect_tools, export_document
 from theo_explore.progress import ProgressReporter, stream_graph
@@ -25,7 +31,29 @@ from theo_explore.runtime import (
 
 app = typer.Typer(
     add_completion=False,
-    help="Theoretical Exploration Bot: research -> article/mini-book.",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+    help=(
+        "Theoretical Exploration Bot: turn a theoretical question into a "
+        "research-grounded article or mini-book.\n\n"
+        "A run walks a LangGraph pipeline (intake -> scope -> outline -> "
+        "research -> draft -> verify -> edit -> export) and writes every "
+        "artifact under [bold]workspace/<project-id>/[/bold]. Runs pause for "
+        "human approval at the scope and outline gates unless [bold]--auto[/bold] "
+        "is given."
+    ),
+    epilog=(
+        "[bold]Examples[/bold]\n\n"
+        '  theo-explore run "Why does time have a direction?"\n'
+        '  theo-explore run "Open problem in category theory" --auto --preset article-short\n'
+        '  theo-explore run "The measurement problem" --type mini-book --synthesize\n'
+        '  theo-explore run "smoke test" --auto --fake-llm --no-export\n'
+        "  theo-explore resume <project-id>\n"
+        "  theo-explore status <project-id>\n"
+        "  theo-explore export <project-id> --formats pdf,docx\n\n"
+        "Run [bold]theo-explore COMMAND --help[/bold] for the options of a specific command. "
+        "Model ids, API keys and workspace root come from the environment (.env); see README."
+    ),
 )
 console = Console()
 
@@ -131,22 +159,74 @@ async def _run_project(
 @app.command()
 def run(
     topic: str = typer.Argument(..., help="The theoretical question to explore."),
-    doc_type: str = typer.Option("article", "--type", help="article | mini-book"),
-    preset: str = typer.Option("article-short", "--preset", help="Length/quality preset."),
-    audience: str | None = typer.Option(None, "--audience"),
-    constraint: list[str] = typer.Option(None, "--constraint", help="Repeatable constraint."),
-    auto: bool = typer.Option(False, "--auto", help="Skip HITL approvals."),
-    synthesize: bool = typer.Option(False, "--synthesize", help="Add whole-document synthesis."),
-    max_concurrency: int = typer.Option(4, "--max-concurrency"),
-    fake_llm: bool = typer.Option(False, "--fake-llm", help="Deterministic offline backend."),
-    export: bool = typer.Option(True, "--export/--no-export", help="Render PDF/DOCX via Pandoc."),
-    formats: str = typer.Option(",".join(DEFAULT_FORMATS), "--formats"),
-    max_cost: float | None = typer.Option(None, "--max-cost", help="Abort budget in USD."),
-    project_id: str | None = typer.Option(None, "--project-id"),
-    workspace: str | None = typer.Option(None, "--workspace"),
-    quiet: bool = typer.Option(False, "--quiet", help="Suppress live progress output."),
+    doc_type: str = typer.Option(
+        "article", "--type", help="Output kind: 'article' or 'mini-book'."
+    ),
+    preset: str = typer.Option(
+        "article-short",
+        "--preset",
+        help="Length/quality preset name (see `theo-explore presets`).",
+    ),
+    audience: str | None = typer.Option(
+        None,
+        "--audience",
+        help="Target reader (e.g. 'graduate students'); guides tone and assumed background.",
+    ),
+    constraint: list[str] = typer.Option(
+        None,
+        "--constraint",
+        help="Extra constraint the article must respect; repeat the flag for several.",
+    ),
+    auto: bool = typer.Option(
+        False, "--auto", help="Skip the scope/outline approval gates and run to completion."
+    ),
+    synthesize: bool = typer.Option(
+        False,
+        "--synthesize",
+        help="Add a whole-document synthesis pass after the sections are drafted.",
+    ),
+    max_concurrency: int = typer.Option(
+        4, "--max-concurrency", help="Maximum concurrent research/draft branches."
+    ),
+    fake_llm: bool = typer.Option(
+        False,
+        "--fake-llm",
+        help="Use the deterministic offline LLM backend (no keys or network needed).",
+    ),
+    export: bool = typer.Option(
+        True,
+        "--export/--no-export",
+        help="After finishing, render the Markdown to PDF/DOCX via Pandoc.",
+    ),
+    formats: str = typer.Option(
+        ",".join(DEFAULT_FORMATS),
+        "--formats",
+        help="Comma-separated export formats (e.g. 'pdf,docx'); ignored with --no-export.",
+    ),
+    max_cost: float | None = typer.Option(
+        None,
+        "--max-cost",
+        help="Abort remaining work once estimated spend exceeds this USD budget.",
+    ),
+    project_id: str | None = typer.Option(
+        None,
+        "--project-id",
+        help="Explicit project id / workspace folder (default: derived from the topic).",
+    ),
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Workspace root directory (overrides THEO_WORKSPACE_ROOT)."
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help="Suppress live progress output; only errors and the final summary print.",
+    ),
 ) -> None:
-    """Start a new exploration."""
+    """Start a new exploration.
+
+    Without --auto the run pauses at the scope and outline review gates and asks
+    you to approve (or supply an edited JSON object) before continuing.
+    """
     _load_env()
     settings = _settings(max_concurrency, workspace)
     preset_obj = load_preset(preset, settings)
@@ -217,11 +297,23 @@ async def _run(
 
 @app.command()
 def resume(
-    project_id: str = typer.Argument(...),
-    fake_llm: bool = typer.Option(False, "--fake-llm"),
-    workspace: str | None = typer.Option(None, "--workspace"),
-    auto: bool = typer.Option(True, "--auto/--interactive"),
-    quiet: bool = typer.Option(False, "--quiet", help="Suppress live progress output."),
+    project_id: str = typer.Argument(..., help="Project id to resume (must exist in workspace)."),
+    fake_llm: bool = typer.Option(
+        False, "--fake-llm", help="Use the deterministic offline LLM backend."
+    ),
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Workspace root directory (overrides THEO_WORKSPACE_ROOT)."
+    ),
+    auto: bool = typer.Option(
+        True,
+        "--auto/--interactive",
+        help="Auto-approve a pending review (default) or resolve it interactively.",
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help="Suppress live progress output; only errors and the final summary print.",
+    ),
 ) -> None:
     """Resume a paused or crashed project (thread_id = project_id)."""
     _load_env()
@@ -272,8 +364,10 @@ async def _resume(
 
 @app.command()
 def status(
-    project_id: str = typer.Argument(...),
-    workspace: str | None = typer.Option(None, "--workspace"),
+    project_id: str = typer.Argument(..., help="Project id whose manifest to print."),
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Workspace root directory (overrides THEO_WORKSPACE_ROOT)."
+    ),
 ) -> None:
     """Show a project's manifest and artifacts."""
     _load_env()
@@ -282,10 +376,25 @@ def status(
 
 
 @app.command()
+def presets() -> None:
+    """List the available --preset names."""
+    _load_env()
+    settings = _settings(None, None)
+    for name in list_presets(settings):
+        console.print(name)
+
+
+@app.command()
 def export(
-    project_id: str = typer.Argument(...),
-    formats: str = typer.Option(",".join(DEFAULT_FORMATS), "--formats"),
-    workspace: str | None = typer.Option(None, "--workspace"),
+    project_id: str = typer.Argument(..., help="Project id whose final.md to re-export."),
+    formats: str = typer.Option(
+        ",".join(DEFAULT_FORMATS),
+        "--formats",
+        help="Comma-separated export formats (e.g. 'pdf,docx').",
+    ),
+    workspace: str | None = typer.Option(
+        None, "--workspace", help="Workspace root directory (overrides THEO_WORKSPACE_ROOT)."
+    ),
 ) -> None:
     """Re-export an existing project's Markdown to PDF/DOCX."""
     _load_env()
