@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     model_strong: str = "openrouter/deepseek/deepseek-v3.2"
     model_cheap: str = "openrouter/deepseek/deepseek-chat"
+    reasoning_effort: str = "high"
     allowed_providers: str = "openrouter,deepseek"
     default_provider: str = "openrouter"
     max_concurrency: int = 4
@@ -98,6 +99,7 @@ def load_models_config(settings: Settings | None = None) -> dict[str, Any]:
         **os.environ,
         "THEO_MODEL_STRONG": settings.model_strong,
         "THEO_MODEL_CHEAP": settings.model_cheap,
+        "THEO_REASONING_EFFORT": settings.reasoning_effort,
     }
     return _expand_env(raw, env)
 

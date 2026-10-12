@@ -39,6 +39,7 @@ class FakeBackend:
         max_tokens: int,
         json_object: bool,
         json_schema: dict[str, Any] | None,
+        reasoning_effort: str | None = None,
     ) -> RawCompletion:
         self.calls.append((node, messages))
         system = messages[0]["content"] if messages else ""

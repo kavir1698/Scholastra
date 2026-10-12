@@ -76,6 +76,37 @@ def test_capability_flags_present():
     factory = LLMFactory()
     assert factory.node_config("draft").supports_json_schema is False
     assert factory.node_config("draft").supports_temperature is True
+    assert factory.node_config("draft").reasoning_effort == "high"
+    assert factory.node_config("draft").supports_reasoning_effort is True
+
+
+def test_reasoning_effort_defaults_high_for_all_nodes():
+    factory = LLMFactory()
+    for node in ("draft", "verify", "outline", "intake"):
+        cfg = factory.node_config(node)
+        assert cfg.reasoning_effort == "high"
+        assert factory._reasoning_effort(cfg) == "high"
+
+
+def test_reasoning_effort_overridable_and_disableable_per_node():
+    config = {
+        "tiers": {
+            "strong": "openrouter/deepseek/deepseek-chat",
+            "cheap": "openrouter/deepseek/deepseek-chat",
+        },
+        "defaults": {"reasoning_effort": "high", "supports_reasoning_effort": False},
+        "nodes": {
+            "scope": {"model": "strong"},
+            "verify": {
+                "model": "cheap",
+                "reasoning_effort": "low",
+                "supports_reasoning_effort": True,
+            },
+        },
+    }
+    factory = LLMFactory(models_config=config)
+    assert factory._reasoning_effort(factory.node_config("scope")) is None
+    assert factory._reasoning_effort(factory.node_config("verify")) == "low"
 
 
 def test_add_usage_and_budget():

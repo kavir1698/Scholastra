@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypeVar
 
@@ -31,6 +32,8 @@ from theo_explore.utils import extract_json
 
 Message = dict[str, str]
 TModel = TypeVar("TModel", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 
 class SchemaValidationError(RuntimeError):
@@ -57,6 +60,8 @@ class NodeConfig:
     max_tokens: int = 4000
     supports_json_schema: bool = True
     supports_temperature: bool = True
+    reasoning_effort: str | None = None
+    supports_reasoning_effort: bool = True
 
 
 @dataclass
@@ -90,6 +95,7 @@ class LLMBackend(Protocol):
         max_tokens: int,
         json_object: bool,
         json_schema: dict[str, Any] | None,
+        reasoning_effort: str | None = None,
     ) -> RawCompletion: ...
 
 
@@ -98,6 +104,9 @@ class LiteLLMBackend:
 
     def __init__(self, *, max_retries: int = 3) -> None:
         self._max_retries = max_retries
+        # Remember per model whether reasoning_effort is accepted, so a rejecting
+        # provider does not pay a failing probe on every subsequent call.
+        self._effort_supported: dict[str, bool] = {}
         # Suppress litellm's "Give Feedback" banner: our capability fallback
         # intentionally probes unsupported response_format shapes.
         try:
@@ -117,18 +126,18 @@ class LiteLLMBackend:
         max_tokens: int,
         json_object: bool,
         json_schema: dict[str, Any] | None,
+        reasoning_effort: str | None = None,
     ) -> RawCompletion:
         import litellm
 
         base_kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        attempts: list[dict[str, Any]] = []
+        response_formats: list[dict[str, Any]] = []
         if json_schema is not None:
-            attempts.append(
+            response_formats.append(
                 {
                     "response_format": {
                         "type": "json_schema",
@@ -140,8 +149,30 @@ class LiteLLMBackend:
                 }
             )
         if json_object:
-            attempts.append({"response_format": {"type": "json_object"}})
-        attempts.append({})
+            response_formats.append({"response_format": {"type": "json_object"}})
+        response_formats.append({})
+
+        # Optional params are layered so a provider that rejects one of them
+        # degrades to a working shape instead of failing the whole node. The
+        # preferred shape (temperature + reasoning_effort) is tried first.
+        # Once a model is known to reject reasoning_effort we stop probing it.
+        send_effort = reasoning_effort if self._effort_supported.get(model) is not False else None
+        param_shapes: list[dict[str, Any]] = []
+        full: dict[str, Any] = {"temperature": temperature}
+        if send_effort:
+            full["reasoning_effort"] = send_effort
+        param_shapes.append(full)
+        if send_effort:
+            param_shapes.append({"temperature": temperature})
+            param_shapes.append({"reasoning_effort": send_effort})
+        param_shapes.append({})
+
+        attempts: list[dict[str, Any]] = []
+        for params in param_shapes:
+            for response_format in response_formats:
+                shape = {**params, **response_format}
+                if shape not in attempts:
+                    attempts.append(shape)
 
         @retry(
             retry=retry_if_exception_type(LLMProviderError),
@@ -168,9 +199,11 @@ class LiteLLMBackend:
 
         response: Any = None
         last_exc: Exception | None = None
+        winning: dict[str, Any] | None = None
         for extra in attempts:
             try:
                 response = await _call({**base_kwargs, **extra})
+                winning = extra
                 break
             except LLMProviderError:
                 raise
@@ -179,6 +212,18 @@ class LiteLLMBackend:
                 continue
         if response is None:
             raise LLMProviderError(f"all completion shapes failed: {last_exc}")
+
+        # Record whether the model accepted reasoning_effort so later calls skip
+        # the probe, and surface a silent downgrade instead of hiding it.
+        if send_effort:
+            accepted = winning is not None and "reasoning_effort" in winning
+            self._effort_supported[model] = accepted
+            if not accepted:
+                logger.warning(
+                    "model %s rejected reasoning_effort=%s; continuing without it",
+                    model,
+                    send_effort,
+                )
 
         text = _extract_text(response)
         tokens_in, tokens_out = _usage(response)
@@ -292,6 +337,12 @@ class LLMFactory:
                 max_tokens=int(cfg.get("max_tokens", 4000)),
                 supports_json_schema=bool(cfg.get("supports_json_schema", True)),
                 supports_temperature=bool(cfg.get("supports_temperature", True)),
+                reasoning_effort=(
+                    str(cfg["reasoning_effort"]) if cfg.get("reasoning_effort") else None
+                ),
+                supports_reasoning_effort=bool(
+                    cfg.get("supports_reasoning_effort", True)
+                ),
             )
         return configs
 
@@ -305,6 +356,13 @@ class LLMFactory:
         config = NodeConfig(model=model)
         self._node_configs[node] = config
         return config
+
+    @staticmethod
+    def _reasoning_effort(cfg: NodeConfig) -> str | None:
+        """Return the reasoning effort to send, or None when disabled."""
+        if not cfg.supports_reasoning_effort:
+            return None
+        return cfg.reasoning_effort or None
 
     async def structured(
         self,
@@ -334,6 +392,7 @@ class LLMFactory:
                 max_tokens=cfg.max_tokens,
                 json_object=True,
                 json_schema=schema_json if cfg.supports_json_schema else None,
+                reasoning_effort=self._reasoning_effort(cfg),
             )
             usage.calls += 1
             usage.tokens_in += raw.tokens_in
@@ -377,6 +436,7 @@ class LLMFactory:
             max_tokens=cfg.max_tokens,
             json_object=False,
             json_schema=None,
+            reasoning_effort=self._reasoning_effort(cfg),
         )
         usage = Usage(
             calls=1,

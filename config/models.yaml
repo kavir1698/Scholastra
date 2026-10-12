@@ -24,6 +24,11 @@ defaults:
   # Most providers reject response_format json_schema; use json_object only.
   supports_json_schema: false
   supports_temperature: true
+  # Reasoning effort for reasoning-capable models (minimal | low | medium | high).
+  # Set per node to override; falls back to THEO_REASONING_EFFORT, then "high".
+  reasoning_effort: "${THEO_REASONING_EFFORT:-high}"
+  # When false the param is never sent (for providers/models that reject it).
+  supports_reasoning_effort: true
 
 nodes:
   intake:
