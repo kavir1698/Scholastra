@@ -221,6 +221,42 @@ def test_quality_gate_flags_incomplete_verification():
     assert gate.blocked is True
 
 
+class _BrokenVerifyResponder(ScriptedResponder):
+    """Returns a shape that can never validate, forcing the verifier to fail."""
+
+    def _node_verify(self, prompt: str) -> dict:
+        return {"results": "not-a-list"}
+
+
+async def test_verifier_error_is_recorded_distinctly_from_a_clean_pass(deps_factory):
+    node = make_verify_citations_node(deps_factory(responder=_BrokenVerifyResponder()))
+    out = await node(
+        {
+            "drafts": {"s1": _draft("A claim [@doi:1].")},
+            "sources": {"doi:1": Source(id="doi:1", kind="paper", title="T").model_dump()},
+            "evidence": {},
+            "revision_round": 0,
+        }
+    )
+    verification = out["verification"]["s1"]
+    assert verification["verified"] is False
+    assert verification["verifier_error"]
+    # Mechanical resolution still passed, so the two states are genuinely distinct.
+    assert verification["passed"] is True
+
+
+def test_quality_gate_counts_verifier_errors():
+    verification = {
+        "s1": SectionVerification(
+            section_id="s1", verified=False, verifier_error="boom"
+        )
+    }
+    gate = _build_gate({"drafts": {"s1": {}}, "editorial": []}, verification, strict=True)
+    assert gate.verification_incomplete is True
+    assert gate.verifier_error_count == 1
+    assert any("verifier call failed" in r for r in gate.reasons)
+
+
 def test_route_after_critique_ignores_unknown_section(deps_factory):
     route = make_route_after_critique(deps_factory())
     state = {

@@ -40,6 +40,7 @@ def _build_gate(
     unresolved = sum(len(v.unresolved_cites) for v in verification.values())
     low_tier = sum(len(v.low_tier_support) for v in verification.values())
     missing_verification = sorted(drafted - set(verification))
+    verifier_errors = sum(1 for v in verification.values() if v.verifier_error)
     incomplete = any(not v.verified for v in verification.values()) or bool(missing_verification)
 
     synth = state.get("synthesis_verification") or {}
@@ -73,7 +74,13 @@ def _build_gate(
     if unresolved_issues:
         reasons.append(f"{len(unresolved_issues)} blocking issue(s) remain unresolved")
     if incomplete:
-        reasons.append("citation verification was incomplete (verifier failed or skipped)")
+        detail: list[str] = []
+        if missing_verification:
+            detail.append(f"{len(missing_verification)} section(s) never verified")
+        if verifier_errors:
+            detail.append(f"{verifier_errors} section(s) where the verifier call failed")
+        suffix = f" ({'; '.join(detail)})" if detail else ""
+        reasons.append(f"citation verification was incomplete (verifier failed or skipped){suffix}")
     if synth_blocking:
         reasons.append("synthesis contains unsupported or unresolved citations")
     if synth_incomplete:
@@ -86,6 +93,7 @@ def _build_gate(
         clean=not reasons,
         reasons=reasons,
         verification_incomplete=incomplete or synth_incomplete,
+        verifier_error_count=verifier_errors,
         unsupported_count=unsupported,
         partial_count=partial,
         uncited_count=uncited,

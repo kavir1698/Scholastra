@@ -35,6 +35,9 @@ TModel = TypeVar("TModel", bound=BaseModel)
 
 logger = logging.getLogger(__name__)
 
+# Cap on how much of a prior model response is echoed back into a repair turn.
+_REPAIR_ECHO_LIMIT = 6000
+
 
 class SchemaValidationError(RuntimeError):
     """Raised when a model response cannot be coerced into the target schema."""
@@ -51,6 +54,7 @@ class RawCompletion:
     tokens_out: int = 0
     cost_usd: float = 0.0
     model: str = ""
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -234,6 +238,7 @@ class LiteLLMBackend:
             tokens_out=tokens_out,
             cost_usd=cost,
             model=model,
+            finish_reason=_finish_reason(response),
         )
 
 
@@ -251,6 +256,20 @@ def _extract_text(response: Any) -> str:
     if isinstance(content, list):  # multimodal content blocks
         content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
     return content or ""
+
+
+def _finish_reason(response: Any) -> str | None:
+    """Return the provider's finish_reason (e.g. ``stop`` or ``length``), if present."""
+    choices = getattr(response, "choices", None)
+    if choices is None and isinstance(response, dict):
+        choices = response.get("choices")
+    if not choices:
+        return None
+    choice = choices[0]
+    reason = getattr(choice, "finish_reason", None)
+    if reason is None and isinstance(choice, dict):
+        reason = choice.get("finish_reason")
+    return str(reason) if reason is not None else None
 
 
 def _usage(response: Any) -> tuple[int, int]:
@@ -379,17 +398,21 @@ class LLMFactory:
         if extra_system:
             system_prompt = f"{extra_system}\n\n{system_prompt}"
         convo: list[Message] = [{"role": "system", "content": system_prompt}, *messages]
+        properties, array_fields = _schema_shape(schema)
+        shape_hint = _shape_hint(properties)
 
         usage = Usage(model=cfg.model)
         last_error: Exception | None = None
+        previous_error: str | None = None
         raw_text = ""
+        max_tokens = cfg.max_tokens
         for attempt in range(max_repairs + 1):
             raw = await self._complete(
                 node=node,
                 model=cfg.model,
                 messages=convo,
                 temperature=cfg.temperature,
-                max_tokens=cfg.max_tokens,
+                max_tokens=max_tokens,
                 json_object=True,
                 json_schema=schema_json if cfg.supports_json_schema else None,
                 reasoning_effort=self._reasoning_effort(cfg),
@@ -399,23 +422,49 @@ class LLMFactory:
             usage.tokens_out += raw.tokens_out
             usage.cost_usd += raw.cost_usd
             raw_text = raw.text
+            truncated = raw.finish_reason == "length"
             try:
-                data = extract_json(raw_text)
+                data = _coerce_to_schema(extract_json(raw_text), array_fields)
                 return schema.model_validate(data), usage.to_node_usage()
             except Exception as exc:  # noqa: BLE001 - repair loop
                 last_error = exc
                 if attempt >= max_repairs:
                     break
+                # A deterministic repeated failure will not be resolved by another
+                # identical call, so stop instead of multiplying provider spend.
+                signature = str(exc)
+                if signature == previous_error:
+                    logger.warning(
+                        "structured output for node %s failed identically twice; "
+                        "stopping retries early",
+                        node,
+                    )
+                    break
+                previous_error = signature
+                if truncated:
+                    # The completion hit the token ceiling; give the retry more room.
+                    max_tokens = min(int(max_tokens * 1.5) + 256, 32000)
+                    logger.warning(
+                        "structured output for node %s was truncated (finish_reason=length); "
+                        "retrying with max_tokens=%d",
+                        node,
+                        max_tokens,
+                    )
+                repair_lines = [
+                    f"The previous response failed validation with: {exc}.",
+                ]
+                if shape_hint:
+                    repair_lines.append(shape_hint)
+                repair_lines.append("Return ONLY a corrected JSON value matching the schema.")
+                if truncated:
+                    repair_lines.append(
+                        "Your previous response was cut off because it hit the token limit; "
+                        "return the full value, using more concise field values if necessary."
+                    )
                 convo = [
                     *convo,
-                    {"role": "assistant", "content": raw_text},
-                    {
-                        "role": "user",
-                        "content": (
-                            "The previous response failed validation with: "
-                            f"{exc}.\nReturn ONLY a corrected JSON object matching the schema."
-                        ),
-                    },
+                    {"role": "assistant", "content": _cap_echo(raw_text)},
+                    {"role": "user", "content": " ".join(repair_lines)},
                 ]
         raise SchemaValidationError(
             f"node '{node}' failed to produce valid {schema.__name__} after "
@@ -446,6 +495,72 @@ class LLMFactory:
             model=cfg.model,
         )
         return raw.text, usage.to_node_usage()
+
+
+def _cap_echo(text: str, limit: int = _REPAIR_ECHO_LIMIT) -> str:
+    """Bound the previous model output echoed back in a repair turn.
+
+    A truncated completion can be tens of thousands of characters; echoing it
+    verbatim inflates input tokens on every retry.
+    """
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…[truncated]"
+
+
+def _json_types(spec: Any) -> set[str]:
+    """Collect the JSON types declared by a property spec, including ``anyOf``/``oneOf``.
+
+    Nullable fields (e.g. ``list[X] | None``) are emitted as
+    ``{"anyOf": [{"type": "array"}, {"type": "null"}]}``, so a flat ``type`` check
+    would miss them.
+    """
+    if not isinstance(spec, dict):
+        return set()
+    types: set[str] = set()
+    declared = spec.get("type")
+    if isinstance(declared, str):
+        types.add(declared)
+    for key in ("anyOf", "oneOf"):
+        for sub in spec.get(key) or []:
+            types |= _json_types(sub)
+    return types
+
+
+def _schema_shape(schema: type[BaseModel]) -> tuple[list[str], list[str]]:
+    """Return ``(property_names, array_field_names)`` for ``schema``.
+
+    Single source of truth for the two shape signals used by the repair loop, so
+    the hint and the coercion can never disagree about which fields are arrays.
+    """
+    try:
+        spec = schema.model_json_schema()
+    except Exception:  # noqa: BLE001 - shape introspection is best-effort
+        return [], []
+    props = spec.get("properties") or {}
+    array_fields = [name for name, prop in props.items() if "array" in _json_types(prop)]
+    return list(props), array_fields
+
+
+def _shape_hint(properties: list[str]) -> str:
+    """A short, Pydantic-derived reminder of the expected top-level shape."""
+    if properties:
+        return "The top-level value must be a JSON object with keys: " + ", ".join(properties) + "."
+    return ""
+
+
+def _coerce_to_schema(data: Any, array_fields: list[str]) -> Any:
+    """Repair a common shape violation using the target Pydantic model's structure.
+
+    When the model emits a bare JSON array but the target schema is an object with
+    exactly one array-typed field (e.g. ``SectionEvidence.claims`` or
+    ``IssueList.issues``), wrap the array under that field. This is deliberately
+    conservative: an ambiguous shape (two or more array fields) is left untouched
+    so a genuine mismatch still surfaces instead of being silently misfiled.
+    """
+    if isinstance(data, list) and len(array_fields) == 1:
+        return {array_fields[0]: data}
+    return data
 
 
 def _structured_system_prompt(schema: type[BaseModel], schema_json: dict[str, Any]) -> str:

@@ -151,7 +151,7 @@ async def _verify_one_section(
     uncited_ids: list[str] = []
     candidate_ids = [u["id"] for u in uncited]
     results: list = []
-    verified = True
+    verifier_error: str | None = None
     usage = NodeUsage()
     if cited or uncited:
         try:
@@ -171,14 +171,14 @@ async def _verify_one_section(
                     }
                 ],
                 extra_system=system_preamble("Citation Verifier", untrusted=True),
-                max_repairs=0,
+                max_repairs=2,
             )
             unsupported, partial = _derive_lists(report)
             uncited_ids = list(report.uncited_factual)
             results = list(report.results)
         except Exception as exc:  # noqa: BLE001 - mechanical checks still apply
             deps.log("verify_llm_failed", section=sid, error=str(exc))
-            verified = False
+            verifier_error = str(exc)
 
     passed = (
         not unresolved
@@ -197,7 +197,8 @@ async def _verify_one_section(
         support_results=results,
         sources_without_excerpt=without_excerpt,
         low_tier_support=low_tier,
-        verified=verified,
+        verified=verifier_error is None,
+        verifier_error=verifier_error,
         passed=passed,
     ).model_dump()
 

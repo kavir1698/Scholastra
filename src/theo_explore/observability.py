@@ -119,6 +119,7 @@ def build_run_report(
             "strict": gate.get("strict", False),
             "reasons": gate.get("reasons", []),
             "verification_incomplete": gate.get("verification_incomplete", False),
+            "verifier_error_sections": gate.get("verifier_error_count", 0),
             "unsupported_claims": gate.get("unsupported_count", unsupported_total),
             "partial_claims": gate.get("partial_count", partial_total),
             "uncited_factual": gate.get("uncited_count", 0),

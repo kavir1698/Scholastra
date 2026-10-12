@@ -94,3 +94,17 @@ async def test_effort_kept_when_only_temperature_rejected(
     assert any(call.get("reasoning_effort") == "high" for call in calls)
     assert not any("reasoning_effort" in r.getMessage() for r in caplog.records)
     assert backend._effort_supported["openrouter/anthropic/claude-haiku-5.5"] is True
+
+
+async def test_finish_reason_is_surfaced(monkeypatch: pytest.MonkeyPatch):
+    async def fake(**kwargs):
+        return {
+            "choices": [{"message": {"content": "{}"}, "finish_reason": "length"}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }
+
+    monkeypatch.setattr(litellm, "acompletion", fake)
+    backend = LiteLLMBackend()
+    result = await _complete(backend)
+
+    assert result.finish_reason == "length"

@@ -142,7 +142,11 @@ class Claim(_Base):
 
 
 class SectionEvidence(_Base):
-    section_id: str
+    section_id: str = Field(
+        default="",
+        description="Section id; usually injected by the pipeline, so a model omitting it "
+        "must not invalidate otherwise-usable evidence.",
+    )
     claims: list[Claim] = Field(default_factory=list)
     notes: str = Field(default="", description="Synthesis notes, tensions, gaps.")
     coverage: Coverage = Field(default="medium")
@@ -245,6 +249,11 @@ class SectionVerification(_Base):
         description="Sentence ids whose only supporting excerpts are below the claim-support tier.",
     )
     verified: bool = Field(default=True, description="Whether the LLM verifier ran successfully.")
+    verifier_error: str | None = Field(
+        default=None,
+        description="Error from the LLM verifier call when it failed; distinguishes a "
+        "verifier *error* from a verifier that ran and found nothing.",
+    )
     passed: bool = True
 
 
@@ -360,6 +369,9 @@ class QualityGate(_Base):
     clean: bool = Field(default=True, description="No quality reasons detected at all.")
     reasons: list[str] = Field(default_factory=list)
     verification_incomplete: bool = Field(default=False)
+    verifier_error_count: int = Field(
+        default=0, description="Sections whose verifier call failed (vs. simply finding nothing)."
+    )
     unsupported_count: int = Field(default=0)
     partial_count: int = Field(default=0)
     uncited_count: int = Field(default=0)
