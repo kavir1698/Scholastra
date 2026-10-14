@@ -6,7 +6,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from theo_explore.progress import ProgressReporter
+from scholastra.progress import ProgressReporter
 
 
 def _reporter(*, enabled: bool = True) -> tuple[ProgressReporter, StringIO]:

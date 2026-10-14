@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from theo_explore.io.artifacts import open_workspace, validate_project_id
+from scholastra.io.artifacts import open_workspace, validate_project_id
 
 
 @pytest.mark.parametrize(

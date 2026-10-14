@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from theo_explore.agents.llm import LLMFactory
-from theo_explore.config import get_settings
-from theo_explore.models.schemas import NodeUsage
-from theo_explore.observability import (
+from scholastra.agents.llm import LLMFactory
+from scholastra.config import get_settings
+from scholastra.models.schemas import NodeUsage
+from scholastra.observability import (
     add_usage,
     as_budget,
     budget_exceeded,

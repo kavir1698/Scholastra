@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from theo_explore.graph.reducers import add_lists, merge_budget, merge_by_key
+from scholastra.graph.reducers import add_lists, merge_budget, merge_by_key
 
 
 def test_merge_by_key_does_not_clobber():

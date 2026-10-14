@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from theo_explore.agents.fake import ScriptedResponder
-from theo_explore.graph.nodes.editor import make_editor_node
-from theo_explore.models.schemas import (
+from scholastra.agents.fake import ScriptedResponder
+from scholastra.graph.nodes.editor import make_editor_node
+from scholastra.models.schemas import (
     DocumentContract,
     GlossaryEntry,
     Outline,

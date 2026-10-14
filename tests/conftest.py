@@ -10,10 +10,10 @@ from typing import Any
 
 import pytest
 
-from theo_explore.agents.fake import FakeBackend, ScriptedResponder
-from theo_explore.agents.llm import LLMFactory
-from theo_explore.config import Settings, get_settings
-from theo_explore.graph.deps import Deps
+from scholastra.agents.fake import FakeBackend, ScriptedResponder
+from scholastra.agents.llm import LLMFactory
+from scholastra.config import Settings, get_settings
+from scholastra.graph.deps import Deps
 
 
 class FakeTool:
@@ -57,7 +57,7 @@ class TrackingToolProvider:
         ]
         if not allowlist:
             return tools
-        from theo_explore.tools.mcp_client import matches_allowlist
+        from scholastra.tools.mcp_client import matches_allowlist
 
         return [t for t in tools if matches_allowlist(t.name, allowlist)]
 

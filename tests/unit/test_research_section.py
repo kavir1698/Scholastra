@@ -5,16 +5,16 @@ from __future__ import annotations
 import re
 import time
 
-from tests.conftest import FakeTool
-from theo_explore.agents.fake import ScriptedResponder
-from theo_explore.graph.subgraphs.research_section import (
+from scholastra.agents.fake import ScriptedResponder
+from scholastra.graph.subgraphs.research_section import (
     _bind_claims,
     _fuzzy_resolve,
     _source_lookup,
     _wall_clock_expired,
     build_research_subgraph,
 )
-from theo_explore.models.schemas import Claim, ResearchBrief, SectionEvidence, Source
+from scholastra.models.schemas import Claim, ResearchBrief, SectionEvidence, Source
+from tests.conftest import FakeTool
 
 
 def _sources(*records: Source) -> dict:

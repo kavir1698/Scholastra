@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from theo_explore.agents.fake import ScriptedResponder
-from theo_explore.graph.nodes.synthesize import make_synthesize_node
-from theo_explore.models.schemas import DocumentContract, SectionDraft, Source
+from scholastra.agents.fake import ScriptedResponder
+from scholastra.graph.nodes.synthesize import make_synthesize_node
+from scholastra.models.schemas import DocumentContract, SectionDraft, Source
 
 
 class _SynthResponder(ScriptedResponder):

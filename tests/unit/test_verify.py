@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from theo_explore.agents.fake import ScriptedResponder
-from theo_explore.graph.nodes.assembly import _build_gate
-from theo_explore.graph.nodes.quality import make_route_after_critique, make_verify_citations_node
-from theo_explore.models.schemas import (
+from scholastra.agents.fake import ScriptedResponder
+from scholastra.graph.nodes.assembly import _build_gate
+from scholastra.graph.nodes.quality import make_route_after_critique, make_verify_citations_node
+from scholastra.models.schemas import (
     Claim,
     SectionDraft,
     SectionEvidence,

@@ -7,7 +7,7 @@ import logging
 import litellm
 import pytest
 
-from theo_explore.agents.llm import LiteLLMBackend
+from scholastra.agents.llm import LiteLLMBackend
 
 
 def _response(text: str = "{}") -> dict:

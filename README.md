@@ -1,4 +1,4 @@
-# Theoretical Exploration Bot
+# Scholastra
 
 A Python, **LangGraph**-orchestrated agentic system that turns a theoretical question into a
 research-grounded **article** or **mini-book**. It decomposes the question, plans a scholarly
@@ -28,7 +28,7 @@ On Windows, Node-based MCP servers are launched as `cmd /c npx …` automaticall
 
 ```powershell
 uv sync --extra dev
-uv run theo-explore --help
+uv run scholastra --help
 ```
 
 ## Configure keys
@@ -40,7 +40,7 @@ providers** — each MCP server is started only when its required key is present
 Copy-Item .env.example .env
 ```
 
-- **LLM** (required): set `THEO_MODEL_STRONG` / `THEO_MODEL_CHEAP` and the matching provider key.
+- **LLM** (required): set `SCHOLASTRA_MODEL_STRONG` / `SCHOLASTRA_MODEL_CHEAP` and the matching provider key.
   This project is configured for **OpenRouter** and **DeepSeek**:
   - OpenRouter: `OPENROUTER_API_KEY`, model ids like `openrouter/deepseek/deepseek-v3.2` or
     `openrouter/anthropic/claude-sonnet-4.5`.
@@ -50,7 +50,7 @@ Copy-Item .env.example .env
   Model strings follow LiteLLM's `provider/model` convention; defaults live in
   [`config/models.yaml`](config/models.yaml). Model ids copied straight from the OpenRouter site
   (e.g. `anthropic/claude-haiku-5.5` or `~deepseek/deepseek-flash-latest`) can be used as-is —
-  they are automatically routed through `THEO_DEFAULT_PROVIDER` (default `openrouter`).
+  they are automatically routed through `SCHOLASTRA_DEFAULT_PROVIDER` (default `openrouter`).
 - **Search** (recommended): `EXA_API_KEY` and/or `TAVILY_API_KEY`.
 - **Optional**: `SEMANTIC_SCHOLAR_API_KEY`, `NCBI_API_KEY`, `NCBI_ADMIN_EMAIL`, `UNPAYWALL_EMAIL`.
 
@@ -61,33 +61,33 @@ MCP servers, their transports and per-agent tool allowlists live in
 
 ```powershell
 # Interactive run (pauses for approval at scope and outline).
-uv run theo-explore run "Why does time have a direction?"
+uv run scholastra run "Why does time have a direction?"
 
 # Fully autonomous, short article.
-uv run theo-explore run "Why does time have a direction?" --auto --preset article-short
+uv run scholastra run "Why does time have a direction?" --auto --preset article-short
 
 # A mini-book with an explicit synthesis pass.
-uv run theo-explore run "The measurement problem in quantum mechanics" `
+uv run scholastra run "The measurement problem in quantum mechanics" `
     --type mini-book --preset mini-book --synthesize
 
 # Cap spend; the run aborts remaining research/drafting cleanly when exceeded.
-uv run theo-explore run "Open problem in category theory" --max-cost 5.0
+uv run scholastra run "Open problem in category theory" --max-cost 5.0
 
 # Resume a paused/crashed project.
-uv run theo-explore resume <project-id>
+uv run scholastra resume <project-id>
 
 # Inspect a project's manifest and artifacts.
-uv run theo-explore status <project-id>
+uv run scholastra status <project-id>
 
 # Re-export an existing project to PDF/DOCX.
-uv run theo-explore export <project-id> --formats pdf,docx
+uv run scholastra export <project-id> --formats pdf,docx
 ```
 
 Runs print live progress per phase and per section: research and drafting fan out, so each branch
 reports as it completes, evidence-free sections are flagged, and numbered phase headers track
 overall position. Use `--quiet` for scripted output.
 
-Artifacts land in `workspace/<project-id>/` (override the root with `THEO_WORKSPACE_ROOT`):
+Artifacts land in `workspace/<project-id>/` (override the root with `SCHOLASTRA_WORKSPACE_ROOT`):
 
 ```
 workspace/<project-id>/
@@ -108,7 +108,7 @@ The canonical `final.md` carries inline citations and a rendered author-date ref
 ### Offline smoke test (no keys, no network)
 
 ```powershell
-uv run theo-explore run "smoke test topic" --auto --fake-llm --no-export
+uv run scholastra run "smoke test topic" --auto --fake-llm --no-export
 ```
 
 `--fake-llm` swaps in a deterministic backend so a full graph run completes offline.

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from theo_explore.citations import (
+from scholastra.citations import (
     filter_citations,
     iter_citation_keys,
     render_inline_citations,
 )
-from theo_explore.models.schemas import Source
+from scholastra.models.schemas import Source
 
 
 def test_iter_citation_keys_expands_groups():

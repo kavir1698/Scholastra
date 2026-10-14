@@ -2,7 +2,7 @@
 #
 # `model` is either a reference to a tier defined under `tiers` ("strong" | "cheap")
 # or a literal LiteLLM model string. Tiers resolve from the environment:
-#   THEO_MODEL_STRONG / THEO_MODEL_CHEAP  (see .env.example)
+#   SCHOLASTRA_MODEL_STRONG / SCHOLASTRA_MODEL_CHEAP  (see .env.example)
 #
 # Allowed providers for this project: OpenRouter and DeepSeek.
 #   OpenRouter (LiteLLM prefix `openrouter/<vendor>/<model>`, key OPENROUTER_API_KEY):
@@ -15,8 +15,8 @@
 # instead of assuming uniform behaviour across LiteLLM providers.
 
 tiers:
-  strong: "${THEO_MODEL_STRONG:-openrouter/deepseek/deepseek-v3.2}"
-  cheap: "${THEO_MODEL_CHEAP:-openrouter/deepseek/deepseek-chat}"
+  strong: "${SCHOLASTRA_MODEL_STRONG:-openrouter/deepseek/deepseek-v3.2}"
+  cheap: "${SCHOLASTRA_MODEL_CHEAP:-openrouter/deepseek/deepseek-chat}"
 
 defaults:
   temperature: 0.3
@@ -25,8 +25,8 @@ defaults:
   supports_json_schema: false
   supports_temperature: true
   # Reasoning effort for reasoning-capable models (minimal | low | medium | high).
-  # Set per node to override; falls back to THEO_REASONING_EFFORT, then "high".
-  reasoning_effort: "${THEO_REASONING_EFFORT:-high}"
+  # Set per node to override; falls back to SCHOLASTRA_REASONING_EFFORT, then "high".
+  reasoning_effort: "${SCHOLASTRA_REASONING_EFFORT:-high}"
   # When false the param is never sent (for providers/models that reject it).
   supports_reasoning_effort: true
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from theo_explore.graph.subgraphs.draft_section import walk_units
+from scholastra.graph.subgraphs.draft_section import walk_units
 
 
 def test_walk_units_depth_first_order_and_leaf_flags():

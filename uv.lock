@@ -1583,6 +1583,62 @@ wheels = [
 ]
 
 [[package]]
+name = "scholastra"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "bibtexparser" },
+    { name = "httpx" },
+    { name = "jinja2" },
+    { name = "langchain-core" },
+    { name = "langchain-mcp-adapters" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "litellm" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "tenacity" },
+    { name = "trafilatura" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bibtexparser", specifier = ">=2.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "langchain-core", specifier = ">=0.3" },
+    { name = "langchain-mcp-adapters", specifier = ">=0.1" },
+    { name = "langgraph", specifier = ">=0.4" },
+    { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
+    { name = "litellm", specifier = ">=1.55" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rich", specifier = ">=13.9" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7" },
+    { name = "tenacity", specifier = ">=9.0" },
+    { name = "trafilatura", specifier = ">=1.12" },
+    { name = "typer", specifier = ">=0.12" },
+    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1655,62 +1711,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/82/9e/497c1c8ebe5a5b5d1
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d6/26/1ff2b0721ac66a3ec5b1402b333110b352ab0a8724052ac279a7b82d40c4/tenacity-9.2.1-py3-none-any.whl", hash = "sha256:9e56f17539296baab7beabb08b92f6ee3d7be92d8be72d763360677c2ad6580e", size = 32310, upload-time = "2026-10-07T12:13:00.102Z" },
 ]
-
-[[package]]
-name = "theoretical-exploration-bot"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "bibtexparser" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "langchain-core" },
-    { name = "langchain-mcp-adapters" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-sqlite" },
-    { name = "litellm" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyyaml" },
-    { name = "rich" },
-    { name = "tenacity" },
-    { name = "trafilatura" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "bibtexparser", specifier = ">=2.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "jinja2", specifier = ">=3.1" },
-    { name = "langchain-core", specifier = ">=0.3" },
-    { name = "langchain-mcp-adapters", specifier = ">=0.1" },
-    { name = "langgraph", specifier = ">=0.4" },
-    { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
-    { name = "litellm", specifier = ">=1.55" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "pydantic-settings", specifier = ">=2.6" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rich", specifier = ">=13.9" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7" },
-    { name = "tenacity", specifier = ">=9.0" },
-    { name = "trafilatura", specifier = ">=1.12" },
-    { name = "typer", specifier = ">=0.12" },
-    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "tiktoken"

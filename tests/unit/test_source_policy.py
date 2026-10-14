@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from theo_explore.models.schemas import Source
-from theo_explore.sources.policy import (
+from scholastra.models.schemas import Source
+from scholastra.sources.policy import (
     apply_source_policy,
     classify_role,
     classify_tier,
     source_quality_summary,
     tier_allows_claim_support,
 )
-from theo_explore.sources.registry import normalize_tool_result, register_sources
+from scholastra.sources.registry import normalize_tool_result, register_sources
 
 
 def test_tier_classification_by_kind():

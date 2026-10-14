@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from theo_explore.tools.mcp_client import (
+from scholastra.tools.mcp_client import (
     MCPToolProvider,
     build_connection,
     is_enabled,
@@ -94,7 +94,7 @@ async def test_stdio_stub_server_end_to_end(no_capture):
 
     search = next(t for t in tools if t.name == "stub_search")
     result = await search.ainvoke({"query": "anything"})
-    from theo_explore.sources.registry import normalize_tool_result
+    from scholastra.sources.registry import normalize_tool_result
 
     sources = normalize_tool_result(search.name, result)
     assert sources, "stub search should yield at least one source"

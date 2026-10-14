@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from theo_explore.config import load_preset
-from theo_explore.graph.validation import ready_sections, sanitize_outline, topological_waves
-from theo_explore.models.schemas import Outline, Section
+from scholastra.config import load_preset
+from scholastra.graph.validation import ready_sections, sanitize_outline, topological_waves
+from scholastra.models.schemas import Outline, Section
 
 
 def test_topological_waves_orders_parallel_groups():

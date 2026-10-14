@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from theo_explore.io import export as export_mod
-from theo_explore.io.export import ToolStatus, build_pandoc_args, detect_tools, export_document
+from scholastra.io import export as export_mod
+from scholastra.io.export import ToolStatus, build_pandoc_args, detect_tools, export_document
 
 GOLDEN_MD = """---
 title: Golden Document

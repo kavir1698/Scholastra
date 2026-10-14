@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from theo_explore.agents.llm import LLMFactory, RawCompletion, SchemaValidationError
-from theo_explore.models.schemas import (
+from scholastra.agents.llm import LLMFactory, RawCompletion, SchemaValidationError
+from scholastra.models.schemas import (
     Brief,
     DocumentContract,
     Issue,
@@ -18,7 +18,7 @@ from theo_explore.models.schemas import (
     Section,
     SectionEvidence,
 )
-from theo_explore.utils import extract_json
+from scholastra.utils import extract_json
 
 
 def test_brief_round_trip():
@@ -88,7 +88,7 @@ async def test_structured_raises_after_max_repairs():
 
 
 async def test_fake_backend_returns_valid_issue_list():
-    from theo_explore.agents.fake import FakeBackend
+    from scholastra.agents.fake import FakeBackend
 
     factory = LLMFactory(backend=FakeBackend())
     obj, _ = await factory.structured("critique", IssueList, [{"role": "user", "content": "x"}])

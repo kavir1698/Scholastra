@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from theo_explore.claims import (
+from scholastra.claims import (
     is_interpretive,
     looks_factual,
     parse_sentences,

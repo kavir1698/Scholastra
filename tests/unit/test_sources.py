@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from theo_explore.models.schemas import Source
-from theo_explore.sources.bibtex import collect_bibtex, render_reference_list, source_to_csl_json
-from theo_explore.sources.registry import (
+from scholastra.models.schemas import Source
+from scholastra.sources.bibtex import collect_bibtex, render_reference_list, source_to_csl_json
+from scholastra.sources.registry import (
     make_source_id,
     normalize_tool_result,
     normalize_url,

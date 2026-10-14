@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from theo_explore.graph.contract import (
+from scholastra.graph.contract import (
     as_contract,
     bounded_drafts,
     compact_contract,
@@ -10,7 +10,7 @@ from theo_explore.graph.contract import (
     normalize_terminology,
     relevant_glossary,
 )
-from theo_explore.models.schemas import (
+from scholastra.models.schemas import (
     ContractContribution,
     DocumentContract,
     GlossaryEntry,

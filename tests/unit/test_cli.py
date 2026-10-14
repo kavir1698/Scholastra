@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from theo_explore.cli import app
+from scholastra.cli import app
 
 
 def test_cli_run_offline(tmp_path):

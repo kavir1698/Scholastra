@@ -5,11 +5,11 @@ from __future__ import annotations
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
+from scholastra.agents.fake import FakeBackend, ScriptedResponder
+from scholastra.graph.build import build_graph
+from scholastra.models.schemas import Outline, ScopeProposal
+from scholastra.runtime import make_initial_state, pending_interrupt
 from tests.conftest import RevisionResponder, ThreeRootResponder, TrackingToolProvider
-from theo_explore.agents.fake import FakeBackend, ScriptedResponder
-from theo_explore.graph.build import build_graph
-from theo_explore.models.schemas import Outline, ScopeProposal
-from theo_explore.runtime import make_initial_state, pending_interrupt
 
 
 async def _run(deps, project_id: str, **overrides):
@@ -103,7 +103,7 @@ async def test_unresolved_citation_never_reaches_assembly(deps_factory):
 
 
 async def test_budget_guard_aborts_cleanly(deps_factory):
-    from theo_explore.agents.fake import FakeBackend
+    from scholastra.agents.fake import FakeBackend
 
     deps = deps_factory(backend=FakeBackend(cost_per_call=0.01))
     graph, config = await _run(deps, "budget-1", auto=True, max_cost_usd=0.005)

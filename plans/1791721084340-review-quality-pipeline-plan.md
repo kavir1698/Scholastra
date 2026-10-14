@@ -70,12 +70,12 @@ The agreed direction is:
 
 ## Affected Boundaries
 
-- `src/theo_explore/models/schemas.py` and `src/theo_explore/graph/state.py`: new contract, provenance, claim-support, editorial, and report structures.
-- `src/theo_explore/graph/nodes/outline.py`, `research.py`, `draft.py`, and `subgraphs/*`: contract creation/propagation and source-policy enforcement.
-- `src/theo_explore/graph/nodes/quality.py`: sentence-level verifier, blocking route, and re-verification.
+- `src/scholastra/models/schemas.py` and `src/scholastra/graph/state.py`: new contract, provenance, claim-support, editorial, and report structures.
+- `src/scholastra/graph/nodes/outline.py`, `research.py`, `draft.py`, and `subgraphs/*`: contract creation/propagation and source-policy enforcement.
+- `src/scholastra/graph/nodes/quality.py`: sentence-level verifier, blocking route, and re-verification.
 - New editorial node/prompt plus `graph/build.py`: whole-document editing stage and changed-section routing.
-- `src/theo_explore/graph/nodes/synthesize.py` and `assembly.py`: consume edited drafts and enforce quality gate.
-- `src/theo_explore/sources/registry.py`, MCP configuration, and research prompts: provenance/full-text/tier handling.
+- `src/scholastra/graph/nodes/synthesize.py` and `assembly.py`: consume edited drafts and enforce quality gate.
+- `src/scholastra/sources/registry.py`, MCP configuration, and research prompts: provenance/full-text/tier handling.
 - `config/presets/*.yaml`: source-policy thresholds, editor/reverification settings, and strict gate defaults.
 - `tests/unit/*` and `tests/integration/*`: schema, parser, source-policy, graph-order, and blocking-gate coverage.
 
